@@ -12,6 +12,12 @@ submits; the driving **review agent** applies the annotations back to the file;
 the page auto-refreshes via a file watcher. Repeat until the user clicks
 "End review".
 
+The repo doubles as a **Claude Code plugin + marketplace** (`.claude-plugin/`
+holds `plugin.json` and `marketplace.json`; install via
+`/plugin marketplace add peilinok/cc-redline`). The skill body lives under
+`skills/cc-redline/` — **paths in the architecture notes below are relative to
+that directory**; commands shown are runnable from the repo root.
+
 `SKILL.md` is the **agent-facing contract** (trigger conditions; start / wait /
 apply / end flow; annotation field semantics). It is not ordinary docs — when you
 change the submission protocol or annotation structure you MUST update it in
@@ -24,15 +30,17 @@ No build, no bundler, no lint config: plain Node ESM + vendored static assets,
 requires `node >= 18`.
 
     # run all tests — use the glob; a bare dir MODULE_NOT_FOUNDs on node 22 / Windows
-    node --test scripts/tests/*.test.mjs
+    node --test skills/cc-redline/scripts/tests/*.test.mjs
     # a single file
-    node --test scripts/tests/blocks.test.mjs
+    node --test skills/cc-redline/scripts/tests/blocks.test.mjs
     # filter by name
-    node --test --test-name-pattern="sectionRange" scripts/tests/*.test.mjs
+    node --test --test-name-pattern="sectionRange" skills/cc-redline/scripts/tests/*.test.mjs
     # run the server by hand (normally the agent starts it as a background task)
-    node scripts/server.mjs <file.md> --state-dir /tmp/cc-redline-1   # --no-open, --port N
+    node skills/cc-redline/scripts/server.mjs <file.md> --state-dir /tmp/cc-redline-1   # --no-open, --port N
     # one blocking wait round (exit code is the channel)
-    node scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
+    node skills/cc-redline/scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
+    # lint the plugin/marketplace manifests
+    claude plugin validate . --strict
 
 After changing the UI (`assets/`), run the **Manual acceptance checklist** at the
 end of `SKILL.md` — it is the only UI regression list; there are no front-end
@@ -121,3 +129,5 @@ structure requires updating `SKILL.md` (§3) and `evals/evals.json` in lockstep.
 - Front-end changes: run the `SKILL.md` Manual acceptance checklist.
 - **i18n**: UI/runtime strings go through `i18n.mjs` `t()`; values written into the
   submission JSON stay language-neutral (`DOC_START`, English `scope` keys).
+- **Releases**: bump `version` in `.claude-plugin/plugin.json` (and tag) — installed
+  plugins only update when that version changes.

@@ -1,0 +1,21 @@
+{
+  "name": "cc-redline",
+  "version": "0.1.0",
+  "description": "Interactive in-browser Markdown review loop — annotate blocks, sections, selections, or exact source lines; the driving agent applies your edits and the page live-refreshes. Bilingual (EN/中文), zero-dependency.",
+  "author": {
+    "name": "peilinok",
+    "url": "https://github.com/peilinok"
+  },
+  "homepage": "https://github.com/peilinok/cc-redline",
+  "repository": "https://github.com/peilinok/cc-redline",
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "review",
+    "annotation",
+    "redline",
+    "document-review",
+    "bilingual",
+    "claude-code-skill"
+  ]
+}

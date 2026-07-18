@@ -23,4 +23,4 @@ jobs:
         # bash on every OS so the glob expands (Windows cmd/pwsh don't glob,
         # and node <21 doesn't expand test patterns itself)
         shell: bash
-        run: node --test scripts/tests/*.test.mjs
+        run: node --test skills/cc-redline/scripts/tests/*.test.mjs
