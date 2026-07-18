@@ -82,10 +82,12 @@ test('submit seq continues after restart (scans consumed files too)', async (t) 
 
 test('editing the doc bumps /api/doc version within a few polls', async (t) => {
   const { md, stateDir } = setup();
-  const { base } = await listen(t, { file: md, stateDir });
+  // fast watch interval + generous deadline: stat polling on loaded CI runners
+  // has missed a 5s window with the default 500ms interval
+  const { base } = await listen(t, { file: md, stateDir, watchIntervalMs: 100 });
   fs.writeFileSync(md, '# 标题\n\n改过的更长的正文。\n');
   let version = 1;
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 8000;
   while (version === 1 && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 200));
     version = (await (await fetch(base + '/api/doc')).json()).version;
@@ -107,7 +109,7 @@ test('POST /api/done writes done.json and schedules exit(0)', async (t) => {
 
 test('GET /api/events streams a hello frame then a doc-changed frame over SSE', async (t) => {
   const { md, stateDir } = setup();
-  const { base } = await listen(t, { file: md, stateDir });
+  const { base } = await listen(t, { file: md, stateDir, watchIntervalMs: 100 });
 
   // Minimal SSE frame parser: no EventSource in Node, so read the response
   // stream by hand and split on the blank-line frame delimiter.
@@ -147,7 +149,7 @@ test('GET /api/events streams a hello frame then a doc-changed frame over SSE', 
 
     fs.writeFileSync(md, '# 标题\n\n改过的更长的正文。\n');
 
-    const changed = await waitForFrame('doc-changed', 5000);
+    const changed = await waitForFrame('doc-changed', 8000);
     assert.ok(changed, 'expected a doc-changed frame after the file edit');
     assert.equal(changed.data.version, 2);
   } finally {

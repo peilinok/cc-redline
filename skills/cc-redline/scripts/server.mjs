@@ -61,7 +61,7 @@ function scanMaxSeq(stateDir) {
   return max;
 }
 
-export function createApp({ file, stateDir, exit = (code) => process.exit(code), doneExitDelayMs = 2000 }) {
+export function createApp({ file, stateDir, exit = (code) => process.exit(code), doneExitDelayMs = 2000, watchIntervalMs = 500 }) {
   const docFile = path.resolve(file);
   fs.accessSync(docFile, fs.constants.R_OK);
   if (!fs.statSync(docFile).isFile()) throw new Error(`not a file: ${docFile}`);
@@ -79,7 +79,7 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
 
   // fs.watchFile (stat polling) is deliberate: editors and agents often
   // save via temp-file + rename, which fs.watch tends to misreport on Windows.
-  fs.watchFile(docFile, { interval: 500 }, () => {
+  fs.watchFile(docFile, { interval: watchIntervalMs }, () => {
     try {
       const next = fs.readFileSync(docFile, 'utf8');
       if (next !== content) {
