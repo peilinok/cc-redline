@@ -1,5 +1,7 @@
 # CC Redline
 
+**English** · [中文](README.zh-CN.md)
+
 An interactive, in-browser **Markdown review loop** packaged as a
 [Claude Code](https://claude.com/claude-code) skill. Start a local,
 zero-dependency web server that renders a Markdown file with Raw and Render
@@ -8,6 +10,8 @@ submit — and the driving agent applies your annotations back to the file and
 the page auto-refreshes. Repeat until you click **End review**.
 
 The UI is bilingual (English / 中文) and switchable at runtime.
+
+![CC Redline demo — render, annotate, submit](.github/assets/demo-en.gif)
 
 ## Requirements
 
