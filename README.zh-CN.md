@@ -54,10 +54,17 @@ SSE 推送刷新）与 `wait_for_review.mjs`（agent 每轮重跑一次的阻塞
 ## 开发
 
 ```bash
+# 单元测试（无需安装依赖）
 node --test skills/cc-redline/scripts/tests/*.test.mjs   # 用 glob；传目录在 node 22 / Windows 上会失败
+
+# 浏览器 E2E（Playwright 驱动系统 Chrome；仅开发依赖）
+npm ci
+npm run test:e2e
 ```
 
-无 build、无 bundler。前端改动通过 `skills/cc-redline/SKILL.md` 里的验收清单手动验证。
+无 build、无 bundler、零**运行时**依赖——`@playwright/test` 仅为 E2E 使用的
+开发依赖。E2E 自动化了 `skills/cc-redline/SKILL.md` 验收清单的核心项（含完整的
+提交 → agent 修改 → 自动刷新循环）。
 
 ## 许可证
 

@@ -24,3 +24,15 @@ jobs:
         # and node <21 doesn't expand test patterns itself)
         shell: bash
         run: node --test skills/cc-redline/scripts/tests/*.test.mjs
+
+  e2e:
+    name: e2e / chrome
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # channel 'chrome' drives the runner's preinstalled Google Chrome — no browser download
+      - run: npx playwright test

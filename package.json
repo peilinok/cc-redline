@@ -6,10 +6,36 @@
   "license": "MIT",
   "author": "peilinok",
   "homepage": "https://github.com/peilinok/cc-redline#readme",
-  "repository": { "type": "git", "url": "https://github.com/peilinok/cc-redline.git" },
-  "bugs": { "url": "https://github.com/peilinok/cc-redline/issues" },
-  "keywords": ["claude-code", "claude-code-skill", "markdown", "review", "annotation", "redline"],
-  "engines": { "node": ">=18" },
-  "scripts": { "test": "node --test skills/cc-redline/scripts/tests/*.test.mjs" },
-  "files": [".claude-plugin/", "skills/", "LICENSE", "README.md", "THIRD-PARTY-NOTICES.md"]
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peilinok/cc-redline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/peilinok/cc-redline/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-skill",
+    "markdown",
+    "review",
+    "annotation",
+    "redline"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test skills/cc-redline/scripts/tests/*.test.mjs",
+    "test:e2e": "playwright test"
+  },
+  "files": [
+    ".claude-plugin/",
+    "skills/",
+    "LICENSE",
+    "README.md",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
 }
