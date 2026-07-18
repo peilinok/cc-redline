@@ -1,5 +1,7 @@
 # CC Redline
 
+[![CI](https://github.com/peilinok/cc-redline/actions/workflows/ci.yml/badge.svg)](https://github.com/peilinok/cc-redline/actions/workflows/ci.yml)
+
 **English** · [中文](README.zh-CN.md)
 
 An interactive, in-browser **Markdown review loop** packaged as a

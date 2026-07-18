@@ -1,5 +1,7 @@
 # CC Redline
 
+[![CI](https://github.com/peilinok/cc-redline/actions/workflows/ci.yml/badge.svg)](https://github.com/peilinok/cc-redline/actions/workflows/ci.yml)
+
 [English](README.md) · **中文**
 
 一个交互式、在浏览器内进行的 **Markdown 评审循环**，以 [Claude Code](https://claude.com/claude-code) skill 的形式打包。启动一个本地、零依赖的 Web 服务，用 Raw 与 Render 两种模式渲染 Markdown 文件；对块、章节、选中文本或精确源码行做批注；提交后，驱动评审的 agent 把批注应用回文件，页面自动刷新。如此往复，直到你点击 **结束 Review**。
