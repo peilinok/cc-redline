@@ -138,6 +138,8 @@ headings, a table, a task list, a fenced code block, a mermaid block, `$...$` an
 - [ ] Submit writes `submission-<seq>.json`; submitted annotations lock in place as
       "Submitted" (edit/delete hidden) instead of clearing, new draft annotations can still be
       added, the waiting banner shows, and the submitted batch clears when the AI's edit lands
+- [ ] After a refresh lands an edit, the changed blocks flash-highlight briefly
+      (gold fade) in Render, and their source lines do the same in Raw
 - [ ] Saving the file refreshes the browser; with pending annotations a confirm
       banner appears instead of auto-refresh
 - [ ] Multiple submissions queue and are consumed in seq order

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDocument, sectionRange, sliceLines, DOC_START } from '../../assets/js/blocks.mjs';
+import { parseDocument, sectionRange, sliceLines, diffChangedBlocks, DOC_START } from '../../assets/js/blocks.mjs';
 
 test('paragraphs and headings get 1-based closed line ranges', () => {
   const md = '# 标题一\n\n第一段。\n\n第二段第一行\n第二段第二行\n';
@@ -238,4 +238,23 @@ test('hard line break: two trailing spaces mid-paragraph are preserved byte-exac
   assert.equal(blocks[0].type, 'paragraph');
   assert.deepEqual([blocks[0].startLine, blocks[0].endLine], [1, 2]);
   assert.equal(sliceLines(md, blocks[0].startLine, blocks[0].endLine), 'line one  \nline two');
+});
+
+test('diffChangedBlocks: flags modified and added blocks, not unchanged or duplicate ones', () => {
+  const oldMd = '# T\n\npara one\n\npara two\n\ndup\n\ndup\n';
+  const changed = (newMd) => {
+    const { blocks } = parseDocument(newMd);
+    const ids = diffChangedBlocks(oldMd, blocks);
+    return blocks.filter((b) => ids.includes(b.id)).map((b) => b.token.raw.trim());
+  };
+  // unchanged doc → nothing flagged
+  assert.deepEqual(changed(oldMd), []);
+  // one paragraph edited → only it is flagged
+  assert.deepEqual(changed('# T\n\npara one EDITED\n\npara two\n\ndup\n\ndup\n'), ['para one EDITED']);
+  // a new block appended → only it is flagged
+  assert.deepEqual(changed('# T\n\npara one\n\npara two\n\ndup\n\ndup\n\nbrand new\n'), ['brand new']);
+  // duplicates: two identical blocks in old doc must both be consumable
+  assert.deepEqual(changed('# T\n\npara one\n\npara two\n\ndup\n\ndup\n\ndup\n'), ['dup']);
+  // a deletion alone flags nothing (the removed block no longer exists to mark)
+  assert.deepEqual(changed('# T\n\npara one\n\ndup\n\ndup\n'), []);
 });

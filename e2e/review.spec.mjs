@@ -161,6 +161,9 @@ test.describe('submit → agent protocol', () => {
 
     await expect(page.locator('#content')).toContainText('expanded by the agent', { timeout: 10_000 });
     await expect(page.locator('.rail-card')).toHaveCount(0); // submitted batch consumed
+    // the edited block is flash-highlighted so the change is findable; others are not
+    await expect(page.locator('#content .block.changed')).toHaveCount(1);
+    await expect(page.locator('#content .block.changed')).toContainText('expanded by the agent');
   });
 
   test('End review confirms, writes done.json, and the server exits', async ({ page, review }) => {
@@ -179,6 +182,11 @@ test.describe('live reload safety', () => {
     await page.goto(review.url);
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Intro line', 'Rewritten intro line'));
     await expect(page.locator('#content')).toContainText('Rewritten intro line', { timeout: 10_000 });
+    // the changed block is flagged in Render, and its source line in Raw
+    await expect(page.locator('#content .block.changed')).toHaveCount(1);
+    await page.locator('[data-mode-btn="raw"]').click();
+    await expect(page.locator('.raw-line.changed')).toHaveCount(1);
+    await expect(page.locator('.raw-line.changed')).toContainText('Rewritten intro line');
   });
 
   test('a file change with pending drafts shows a confirm banner instead of refreshing', async ({ page, review }) => {

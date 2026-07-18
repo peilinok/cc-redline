@@ -1,4 +1,4 @@
-import { parseDocument } from './blocks.mjs';
+import { parseDocument, diffChangedBlocks } from './blocks.mjs';
 import { renderDocument } from './render.mjs';
 import { renderToc, setupScrollSpy } from './toc.mjs';
 import { connectEvents } from './sse.mjs';
@@ -104,7 +104,24 @@ async function loadDoc() {
 
 async function refreshDoc() {
   hideBanner();
+  const oldContent = state.doc ? state.doc.content : null;
   await loadDoc();
+  if (oldContent !== null) markChanged(oldContent);
+}
+
+// Flash-highlight what a refresh changed (agent edits land this way): the
+// new/modified blocks in Render, and their source lines in Raw.
+function markChanged(oldContent) {
+  for (const id of diffChangedBlocks(oldContent, state.parsed.blocks)) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('changed');
+    const b = state.parsed.blocks.find((x) => x.id === id);
+    if (!b) continue;
+    for (let ln = b.startLine; ln <= b.endLine; ln++) {
+      const row = els.rawView.querySelector(`.raw-line[data-line="${ln}"]`);
+      if (row) row.classList.add('changed');
+    }
+  }
 }
 
 let ruler; // overview ruler; created after `ann` because it reads ann.getMarkers
