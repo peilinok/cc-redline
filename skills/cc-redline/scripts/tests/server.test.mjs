@@ -24,6 +24,32 @@ async function listen(t, opts) {
   return { app, base: `http://127.0.0.1:${app.server.address().port}` };
 }
 
+// Write `content`, then wait for the server to observe the change.
+//
+// fs.watchFile polls stat and compares each poll to the PREVIOUS one; libuv's
+// first (baseline) stat lands only after the first interval, so on a loaded
+// runner the edit can slip in before the baseline — the baseline then records
+// the already-edited file and, with nothing changing afterwards, the change is
+// never seen (the historical flake). We defend by re-touching mtime each round
+// with a strictly-increasing value: consecutive polls always differ, so the
+// change is caught regardless of when the baseline stat happens. `content` is
+// written once and stays constant, so the server broadcasts exactly once (the
+// first poll where it reads new content != its cached content). `check` returns
+// the awaited value (truthy) once satisfied, else null.
+async function editAndAwait(md, content, check, timeoutMs = 12000, stepMs = 200) {
+  fs.writeFileSync(md, content);
+  const deadline = Date.now() + timeoutMs;
+  let bump = 0;
+  while (Date.now() < deadline) {
+    const t = new Date(Date.now() + ++bump * 1000); // strictly increasing mtime
+    try { fs.utimesSync(md, t, t); } catch { /* file briefly busy; retry next round */ }
+    await new Promise((r) => setTimeout(r, stepMs));
+    const v = await check();
+    if (v != null) return v;
+  }
+  return null;
+}
+
 test('GET /api/doc returns content and version 1', async (t) => {
   const { md, stateDir } = setup();
   const { base } = await listen(t, { file: md, stateDir });
@@ -82,16 +108,11 @@ test('submit seq continues after restart (scans consumed files too)', async (t) 
 
 test('editing the doc bumps /api/doc version within a few polls', async (t) => {
   const { md, stateDir } = setup();
-  // fast watch interval + generous deadline: stat polling on loaded CI runners
-  // has missed a 5s window with the default 500ms interval
   const { base } = await listen(t, { file: md, stateDir, watchIntervalMs: 100 });
-  fs.writeFileSync(md, '# 标题\n\n改过的更长的正文。\n');
-  let version = 1;
-  const deadline = Date.now() + 8000;
-  while (version === 1 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 200));
-    version = (await (await fetch(base + '/api/doc')).json()).version;
-  }
+  const version = await editAndAwait(md, '# 标题\n\n改过的更长的正文。\n', async () => {
+    const v = (await (await fetch(base + '/api/doc')).json()).version;
+    return v >= 2 ? v : null;
+  });
   assert.equal(version, 2);
 });
 
@@ -147,9 +168,8 @@ test('GET /api/events streams a hello frame then a doc-changed frame over SSE', 
     assert.ok(hello, 'expected a hello frame on connect');
     assert.equal(hello.data.version, 1);
 
-    fs.writeFileSync(md, '# 标题\n\n改过的更长的正文。\n');
-
-    const changed = await waitForFrame('doc-changed', 8000);
+    const changed = await editAndAwait(md, '# 标题\n\n改过的更长的正文。\n',
+      async () => frames.find((f) => f.event === 'doc-changed') || null);
     assert.ok(changed, 'expected a doc-changed frame after the file edit');
     assert.equal(changed.data.version, 2);
   } finally {
