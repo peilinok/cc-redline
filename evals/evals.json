@@ -1,0 +1,37 @@
+{
+  "skill_name": "cc-redline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我 review 一下 ~/docs/design-notes.md，我要在浏览器里标注",
+      "expected_output": "Start the review server in the background with a fresh state dir, report the URL and the three modes, then block on wait_for_review.mjs in a loop instead of asking the user to describe edits in chat.",
+      "files": [],
+      "expectations": [
+        "Starts scripts/server.mjs with the absolute doc path and a --state-dir under the session temp area, as a background task.",
+        "Reads server-info.json and tells the user the URL and how the three modes work.",
+        "Runs scripts/wait_for_review.mjs with --timeout-sec 540 in a loop, re-running silently on exit code 2."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "（review 进行中，wait 脚本输出了一份 submission：一条标注的 quotedSource 是「本节描述模块的初始化流程。」，comment 是「这句太含糊，说明初始化的具体时机」）请处理这份提交。",
+      "expected_output": "Apply the annotation by locating the quotedSource text verbatim and rewriting it per the comment, report the change in 2-3 sentences, then immediately re-run the wait script.",
+      "files": [],
+      "expectations": [
+        "Anchors the edit by searching quotedSource text, not by startLine/endLine.",
+        "Skips and honestly reports any annotation whose anchor text cannot be found or whose intent is unclear, instead of guessing.",
+        "Does not try to notify the browser after saving (the file watcher handles refresh) and loops back to wait_for_review.mjs."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "帮我读一下这个仓库的 README.md，总结一下要点",
+      "expected_output": "Recognize this as a plain read/summarize request and answer directly without launching the review server.",
+      "files": [],
+      "expectations": [
+        "Does not start server.mjs or open a browser for a summarize-only request.",
+        "Reads the file and summarizes it in chat."
+      ]
+    }
+  ]
+}

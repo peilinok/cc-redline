@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title data-i18n="app.title">CC Redline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/assets/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="/assets/vendor/highlight/atom-one-light.css">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/vendor/mermaid.min.js"></script>
+<script src="/assets/vendor/katex/katex.min.js"></script>
+<script src="/assets/vendor/katex/auto-render.min.js"></script>
+<script src="/assets/vendor/highlight/highlight.min.js"></script>
+</head>
+<body data-mode="render">
+  <header id="topbar">
+    <span id="doc-name"></span>
+    <nav id="mode-switch">
+      <button data-mode-btn="raw">Raw</button>
+      <button data-mode-btn="render" class="active">Render</button>
+    </nav>
+    <span id="conn-dot" data-i18n-title="topbar.conn"></span>
+    <span class="spacer"></span>
+    <div id="ann-nav" data-i18n-title="nav.group">
+      <button id="nav-prev" data-i18n-title="nav.prev">↑</button>
+      <span id="nav-counter">0 / 0</span>
+      <button id="nav-next" data-i18n-title="nav.next">↓</button>
+    </div>
+    <label id="lang-switch" data-i18n-title="lang.switch">
+      <select id="lang-select"><option value="en">EN</option><option value="zh">中文</option></select>
+    </label>
+    <button id="btn-global" data-i18n="btn.global" data-i18n-title="btn.global.title"></button>
+    <button id="btn-hl-toggle" data-i18n="btn.hide" data-i18n-title="btn.hide.title"></button>
+    <button id="btn-submit" disabled></button>
+    <button id="btn-done" data-i18n="btn.done"></button>
+  </header>
+  <div id="banner" hidden></div>
+  <div id="layout">
+    <nav id="toc"></nav>
+    <div id="doc-pane">
+      <main id="content"></main>
+      <pre id="raw-view"></pre>
+      <div id="rail"></div>
+    </div>
+    <div id="ruler" data-i18n-title="ruler.title"></div>
+  </div>
+  <div id="popover" hidden>
+    <div id="popover-target"></div>
+    <textarea id="popover-text" rows="3" data-i18n-placeholder="popover.placeholder"></textarea>
+    <div class="popover-actions">
+      <button id="popover-save" data-i18n="popover.save"></button>
+      <button id="popover-cancel" data-i18n="popover.cancel"></button>
+    </div>
+  </div>
+  <button id="selection-btn" hidden data-i18n="selection.btn"></button>
+  <script type="module" src="/assets/js/main.mjs"></script>
+</body>
+</html>

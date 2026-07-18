@@ -1,0 +1,200 @@
+:root {
+  --border: #d0d7de;
+  --muted: #57606a;
+  --accent: #0969da;
+  --annotated: #fff8c5;
+  --danger: #cf222e;
+  --rail-w: 300px;
+  /* rendered-markdown palette */
+  --md-fg: #1f2328;
+  --md-stripe: #f6f8fa;
+  --md-inline-bg: rgba(129, 139, 152, .12);
+  --md-code-bg: #fafafa;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; color: #1f2328; }
+#banner[hidden], #popover[hidden], #selection-btn[hidden] { display: none !important; }
+
+/* top bar */
+#topbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: #fff; }
+#doc-name { font-weight: 600; max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#mode-switch button { padding: 4px 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+#mode-switch button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #d1242f; display: inline-block; }
+#conn-dot.ok { background: #1a7f37; }
+.spacer { flex: 1; }
+#btn-global, #btn-hl-toggle { background: #fff; color: var(--muted); border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; }
+#btn-global.active, #btn-hl-toggle.active { background: #eaeef2; color: #1f2328; }
+#btn-submit { background: var(--accent); color: #fff; border: none; padding: 6px 14px; cursor: pointer; }
+#btn-submit:disabled { opacity: .5; cursor: default; }
+#btn-done { background: #fff; color: var(--danger); border: 1px solid var(--danger); padding: 6px 14px; cursor: pointer; }
+/* prev/next annotation navigation */
+#ann-nav { display: flex; align-items: center; gap: 2px; }
+#ann-nav button { width: 26px; height: 26px; border: 1px solid var(--border); background: #fff; cursor: pointer; padding: 0; line-height: 1; font-size: 13px; }
+#ann-nav button:hover:not(:disabled) { background: #eaeef2; }
+#ann-nav button:disabled { opacity: .4; cursor: default; }
+#nav-counter { min-width: 46px; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* banner */
+#banner { padding: 8px 16px; background: #ddf4ff; border-bottom: 1px solid var(--accent); display: flex; gap: 12px; align-items: center; }
+#banner button { padding: 2px 10px; cursor: pointer; }
+
+/* layout: TOC + one scroll pane holding the document and the comment rail */
+#layout { display: flex; height: calc(100vh - 46px); }
+#toc { width: 240px; flex: none; overflow-y: auto; border-right: 1px solid var(--border); padding: 12px 0; }
+#doc-pane { flex: 1; position: relative; overflow-y: auto; overflow-x: hidden; }
+#content { padding: 24px calc(var(--rail-w) + 36px) 24px 48px; }
+#raw-view { display: none; margin: 0; padding: 16px calc(var(--rail-w) + 36px) 16px 0; font-size: 13px; line-height: 1.5; }
+
+/* mode visibility — two modes (raw / render); both annotate and both show the TOC */
+body[data-mode="raw"] #content { display: none; }
+body[data-mode="raw"] #raw-view { display: block; }
+
+/* raw view */
+.raw-line { display: flex; position: relative; }
+.raw-line.annotated { background: var(--annotated); }
+.raw-line.ann-focus { box-shadow: inset 3px 0 0 var(--accent); }
+.raw-ln { flex: none; width: 56px; text-align: right; padding-right: 16px; color: #8c959f; user-select: none; }
+.raw-tx { white-space: pre-wrap; word-break: break-all; }
+
+/* toc */
+.toc-item { display: block; padding: 3px 12px; color: var(--muted); text-decoration: none; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 2px solid transparent; }
+.toc-item:hover { color: var(--accent); }
+.toc-item.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.toc-item.depth-2 { padding-left: 24px; }
+.toc-item.depth-3 { padding-left: 36px; }
+.toc-item.depth-4 { padding-left: 48px; }
+.toc-item.depth-5, .toc-item.depth-6 { padding-left: 60px; }
+
+/* blocks & annotation handles */
+.block { position: relative; }
+/* the hover target is a full-height strip flush against the block's left edge, so
+   moving from the block to the buttons never crosses a dead zone that drops :hover */
+.block .handles { display: none; position: absolute; left: -34px; top: 0; bottom: 0; width: 34px; padding-top: 2px; flex-direction: column; align-items: flex-start; gap: 2px; user-select: none; }
+body[data-mode="render"] .block:hover .handles { display: flex; }
+.handles button { position: relative; width: 24px; height: 22px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 13px; padding: 0; }
+.handles button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.handles button::after { content: attr(data-label); position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 6px; white-space: nowrap; background: #1f2328; color: #fff; font-size: 11px; line-height: 1.7; padding: 1px 6px; border-radius: 4px; opacity: 0; pointer-events: none; transition: opacity .1s; z-index: 30; }
+.handles button:hover::after { opacity: 1; }
+/* full-block highlight only for block/section scope; badge for any annotation */
+.block.annotated { background: var(--annotated); outline: 2px solid rgba(212, 167, 44, .25); }
+.block.has-ann::after { content: attr(data-count); position: absolute; right: -6px; top: 0; background: #d4a72c; color: #fff; border-radius: 8px; font-size: 11px; padding: 0 6px; z-index: 2; }
+.block.ann-focus { outline: 2px solid var(--accent); }
+.block-error { color: var(--danger); font-size: 13px; }
+
+/* selection scope: inline highlight of just the selected text, not the whole block */
+.ann-mark { background: var(--annotated); box-shadow: 0 0 0 1px rgba(212, 167, 44, .45); border-radius: 2px; cursor: pointer; }
+.ann-mark.ann-focus { box-shadow: 0 0 0 2px var(--accent); }
+
+/* click-to-jump flash on the anchor */
+@keyframes ann-flash { 0%, 100% { background-color: transparent; } 30% { background-color: rgba(9, 105, 218, .18); } }
+.ann-flash { animation: ann-flash .6s ease; }
+
+/* prev/next navigation: persistent marker on the current annotation */
+.rail-card.nav-current { border-left-color: var(--accent); box-shadow: 0 0 0 2px rgba(9, 105, 218, .5); }
+.block.nav-current { outline: 2px solid var(--accent); }
+.ann-mark.nav-current { box-shadow: 0 0 0 2px var(--accent); }
+.raw-line.nav-current { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* comment rail: cards aligned to each anchor's vertical position */
+#rail { position: absolute; top: 0; right: 16px; width: var(--rail-w); }
+.rail-card { position: absolute; left: 0; width: 100%; background: #fff; border: 1px solid var(--border); border-left: 3px solid #d4a72c; border-radius: 6px; padding: 8px 10px; font-size: 13px; box-shadow: 0 1px 3px rgba(140, 149, 159, .2); cursor: pointer; transition: box-shadow .12s, transform .12s, top .12s; }
+.rail-card.focused { box-shadow: 0 4px 14px rgba(9, 105, 218, .25); border-left-color: var(--accent); transform: translateX(-6px); }
+/* submitted (in-flight, awaiting the AI): locked, no edit/delete, kept visible */
+.rail-card.submitted { border-left-color: #8c959f; background: #f6f8fa; }
+.rail-card.submitted .rail-comment { color: var(--muted); }
+.rail-submitted { margin-left: auto; flex: none; background: #dbe6f5; color: #0550ae; border-radius: 4px; padding: 0 6px; font-size: 11px; }
+.ann-mark.submitted { opacity: .6; }
+.rail-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.rail-loc { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-excerpt { color: var(--muted); font-size: 12px; border-left: 3px solid var(--border); padding-left: 8px; margin: 2px 0 4px; max-height: 7.5em; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rail-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rail-actions { margin-top: 6px; display: flex; gap: 8px; }
+.rail-actions button { font-size: 12px; padding: 2px 8px; cursor: pointer; }
+.ann-scope { display: inline-block; flex: none; background: #eaeef2; border-radius: 4px; padding: 0 6px; font-size: 11px; }
+
+/* hide-all toggle: back to the clean original document */
+body.ann-hidden .block.annotated { background: transparent; outline: none; }
+body.ann-hidden .block.has-ann::after { display: none; }
+body.ann-hidden .ann-mark { background: transparent; box-shadow: none; }
+body.ann-hidden .raw-line.annotated { background: transparent; }
+body.ann-hidden #rail { display: none; }
+body.ann-hidden .ruler-tick.ann { display: none; }
+
+/* overview ruler: whole-doc map of headings + annotations, both modes */
+#ruler { position: relative; flex: none; width: 16px; background: #fafbfc; border-left: 1px solid var(--border); cursor: pointer; user-select: none; }
+.ruler-tick { position: absolute; left: 2px; right: 2px; height: 3px; border-radius: 1px; transform: translateY(-50%); pointer-events: none; }
+.ruler-tick.heading { background: #c4cad1; }
+.ruler-tick.ann { height: 4px; background: #d4a72c; }                 /* block / section — gold */
+.ruler-tick.ann.scope-selection { background: #e45649; }             /* selection — red */
+.ruler-tick.ann.scope-line { background: #4078f2; }                  /* line — blue */
+.ruler-viewport { position: absolute; left: 0; right: 0; background: rgba(9, 105, 218, .12); border: 1px solid rgba(9, 105, 218, .35); border-radius: 2px; pointer-events: none; }
+
+/* rendered markdown typography, scoped to #content.
+   Each block sits in its own .block wrapper, so vertical rhythm comes from the inner
+   elements' margins collapsing between adjacent blocks (not sibling-combinator rules). */
+#content { font-size: 16px; line-height: 1.65; color: var(--md-fg); word-wrap: break-word; }
+
+#content h1, #content h2, #content h3,
+#content h4, #content h5, #content h6 { line-height: 1.4; font-weight: 600; margin: 24px 0 12px; }
+#content h1 { font-size: 30px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+#content h2 { font-size: 23px; padding-bottom: 7px; border-bottom: 1px solid var(--border); }
+#content h3 { font-size: 19px; }
+#content h4 { font-size: 16px; }
+#content h5 { font-size: 14px; }
+#content h6 { font-size: 13px; color: var(--muted); }
+#content h1 code, #content h2 code, #content h3 code,
+#content h4 code, #content h5 code, #content h6 code { font-size: inherit; }
+
+#content p { margin: 14px 0; }
+#content a { color: var(--accent); text-decoration: none; }
+#content a:hover { text-decoration: underline; }
+#content strong { font-weight: 600; }
+
+#content ul, #content ol { padding-left: 28px; margin: 14px 0; }
+#content li { margin-bottom: .35em; }
+#content li > ul, #content li > ol { margin: .3em 0; }
+/* task lists: marked emits a bare <li><input type=checkbox>, so drop the bullet via :has */
+#content li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.4em; }
+#content li > input[type="checkbox"] { margin: 0 .5em 0 0; vertical-align: middle; }
+
+/* inline code: subtle chip in the accent color */
+#content code {
+  font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .88em; word-break: break-word;
+  padding: .12em .4em; border-radius: 6px;
+  background: var(--md-inline-bg); color: var(--accent);
+}
+/* code block: pre is the rounded frame, code the scroller (hljs paints the tokens) */
+#content pre { position: relative; margin: 16px 0; border-radius: 8px; overflow: hidden; background: var(--md-code-bg); }
+#content pre > code {
+  display: block; overflow-x: auto;
+  padding: 14px 16px; font-size: .86rem; line-height: 1.6;
+  background: transparent; color: inherit; border-radius: 0; word-break: normal;
+}
+/* language badge, pinned to the frame (render.mjs emits lang on fenced blocks) */
+#content pre > code[lang]::before {
+  content: attr(lang); position: absolute; top: 8px; right: 12px;
+  font-size: 11px; color: var(--muted); pointer-events: none;
+}
+
+#content blockquote { margin: 16px 0; padding: 2px 16px; border-left: 4px solid var(--border); color: var(--muted); }
+#content blockquote > :first-child { margin-top: 0; }
+#content blockquote > :last-child { margin-bottom: 0; }
+
+#content table { display: block; width: max-content; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 16px 0; font-size: .95em; }
+#content thead { background: var(--md-stripe); text-align: left; }
+#content tr:nth-child(2n) { background: var(--md-stripe); }
+#content th, #content td { border: 1px solid var(--border); padding: 7px 13px; }
+
+#content hr { height: 1px; border: 0; background: var(--border); margin: 28px 0; }
+#content img { max-width: 100%; }
+#content figure { margin: 20px 0; text-align: center; }
+
+/* popover & selection button */
+#popover { position: fixed; z-index: 50; width: 320px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(140, 149, 159, .2); padding: 10px; }
+#popover-target { font-size: 12px; color: var(--muted); margin-bottom: 6px; max-height: 60px; overflow: hidden; }
+#popover-text { width: 100%; }
+.popover-actions { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
+#selection-btn { position: fixed; z-index: 40; padding: 4px 10px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }

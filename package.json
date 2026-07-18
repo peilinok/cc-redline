@@ -1,0 +1,15 @@
+{
+  "name": "cc-redline",
+  "version": "0.1.0",
+  "description": "A Claude Code skill for interactive, in-browser Markdown review — annotate blocks, sections, selections, or exact source lines and let the agent apply your edits in a loop.",
+  "type": "module",
+  "license": "MIT",
+  "author": "peilinok",
+  "homepage": "https://github.com/peilinok/cc-redline#readme",
+  "repository": { "type": "git", "url": "https://github.com/peilinok/cc-redline.git" },
+  "bugs": { "url": "https://github.com/peilinok/cc-redline/issues" },
+  "keywords": ["claude-code", "claude-code-skill", "markdown", "review", "annotation", "redline"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test scripts/tests/*.test.mjs" },
+  "files": ["SKILL.md", "scripts/", "assets/", "evals/", "LICENSE", "README.md", "THIRD-PARTY-NOTICES.md"]
+}

@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+
+# review runtime artifacts, in case a --state-dir is created inside the repo
+server-info.json
+submission-*.json
+done.json
