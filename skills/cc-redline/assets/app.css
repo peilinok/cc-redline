@@ -198,3 +198,11 @@ body.ann-hidden .ruler-tick.ann { display: none; }
 #popover-text { width: 100%; }
 .popover-actions { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
 #selection-btn { position: fixed; z-index: 40; padding: 4px 10px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+
+/* agent-edit highlight: blocks/lines a refresh changed flash then fade */
+@keyframes ccr-changed-fade {
+  from { background-color: #fff3bf; }
+  to { background-color: transparent; }
+}
+#content .block.changed { animation: ccr-changed-fade 3s ease-out; }
+#raw-view .raw-line.changed { animation: ccr-changed-fade 3s ease-out; }

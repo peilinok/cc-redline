@@ -104,3 +104,26 @@ export function sectionRange(blocks, headingBlockId) {
 export function sliceLines(markdown, startLine, endLine) {
   return markdown.split('\n').slice(startLine - 1, endLine).join('\n');
 }
+
+// Blocks of `newBlocks` that are new or modified relative to `oldMarkdown`:
+// a block is unchanged iff its token.raw still occurs in the old document,
+// counted as a multiset so duplicate blocks don't mask real edits. Deletions
+// have no surviving block to flag and are deliberately not reported. Used by
+// the UI to highlight what the agent's edit touched after a refresh.
+export function diffChangedBlocks(oldMarkdown, newBlocks) {
+  // Compare trailing-whitespace-normalized raw: marked folds the blank lines
+  // after a block into its raw, so the same block's raw differs depending on
+  // what follows it (e.g. end-of-file vs. a newly appended neighbor).
+  const key = (b) => b.token.raw.replace(/\s+$/, '');
+  const oldCounts = new Map();
+  for (const b of parseDocument(oldMarkdown).blocks) {
+    oldCounts.set(key(b), (oldCounts.get(key(b)) || 0) + 1);
+  }
+  const changed = [];
+  for (const b of newBlocks) {
+    const left = oldCounts.get(key(b)) || 0;
+    if (left > 0) oldCounts.set(key(b), left - 1);
+    else changed.push(b.id);
+  }
+  return changed;
+}
