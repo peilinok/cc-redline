@@ -42,9 +42,17 @@ requires `node >= 18`.
     # lint the plugin/marketplace manifests
     claude plugin validate . --strict
 
-After changing the UI (`assets/`), run the **Manual acceptance checklist** at the
-end of `SKILL.md` — it is the only UI regression list; there are no front-end
-automated tests.
+    # browser E2E (repo root; needs `npm ci` once + a system Chrome, dev-only)
+    npm run test:e2e
+
+After changing the UI (`assets/`), run the browser E2E suite (`e2e/*.spec.mjs`,
+Playwright driving system Chrome) — it automates the core of `SKILL.md`'s
+**Manual acceptance checklist**, including the full submit → agent-edit → SSE
+refresh loop and the submission-JSON contract. The checklist itself remains the
+authority for the few visual items E2E doesn't cover (ruler ticks, card
+alignment); walk it for UI changes touching those. `@playwright/test` is a
+**devDependency only** — the zero-runtime-deps invariant is about the shipped
+skill, which still needs no `npm install`.
 
 ## Architecture
 

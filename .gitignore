@@ -2,6 +2,10 @@ node_modules/
 .DS_Store
 *.log
 
+# playwright artifacts
+test-results/
+playwright-report/
+
 # review runtime artifacts, in case a --state-dir is created inside the repo
 server-info.json
 submission-*.json

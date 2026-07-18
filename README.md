@@ -62,11 +62,18 @@ anchored **by text, not line numbers**: each carries a byte-exact
 ## Development
 
 ```bash
+# unit tests (no install needed)
 node --test skills/cc-redline/scripts/tests/*.test.mjs   # use the glob; a bare dir fails on node 22 / Windows
+
+# browser E2E (Playwright driving your system Chrome; dev-only dependency)
+npm ci
+npm run test:e2e
 ```
 
-No build step, no bundler. Front-end changes are validated manually via the
-acceptance checklist in `skills/cc-redline/SKILL.md`.
+No build step, no bundler, zero **runtime** dependencies — `@playwright/test`
+is a devDependency used only by the E2E suite, which automates the core of the
+acceptance checklist in `skills/cc-redline/SKILL.md` (including the full
+submit → agent-edit → live-refresh loop).
 
 ## License
 
