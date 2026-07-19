@@ -127,7 +127,9 @@ export function setLang(lang) {
   current = lang;
   try { localStorage.setItem(LANG_KEY, lang); } catch { /* no storage */ }
   syncHtmlLang();
-  window.dispatchEvent(new CustomEvent('cc-redline:langchange', { detail: { lang } }));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cc-redline:langchange', { detail: { lang } }));
+  }
 }
 
 export function t(key, params) { return translate(current, key, params); }
