@@ -4,7 +4,7 @@
 
 [English](README.md) · **中文**
 
-一个交互式、在浏览器内进行的 **Markdown 评审循环**，以 [Claude Code](https://claude.com/claude-code) skill 的形式打包。启动一个本地、零依赖的 Web 服务，用 Raw 与 Render 两种模式渲染 Markdown 文件；对块、章节、选中文本或精确源码行做批注；提交后，驱动评审的 agent 把批注应用回文件，页面自动刷新。如此往复，直到你点击 **结束 Review**。
+一个交互式、在浏览器内进行的 **Markdown 评审循环**，以 [Claude Code](https://claude.com/claude-code) skill 的形式提供。你只需让 agent 评审某个 Markdown 文件，它就会在浏览器里渲染文档（Raw 与 Render 两种模式）；你对块、章节、选中文本或精确源码行做批注并提交；agent 把批注应用回文件，页面实时刷新。如此往复，直到你点击 **结束 Review** —— 无需敲任何命令，全程只在聊天和浏览器里进行。
 
 界面支持中英双语，可在运行时切换。
 
@@ -27,20 +27,20 @@
 或手动安装：把 `skills/cc-redline` 目录复制或软链接到你的 Claude Code skills
 目录（例如 `~/.claude/skills/cc-redline`）。
 
-然后让 agent 评审某个 Markdown 文件，例如：「在浏览器里 review 这份 spec」。
+## 使用
 
-## 直接使用
+装好之后，你不用自己跑任何东西 —— 只要用大白话让 agent 评审某个 Markdown 文件：
 
-```bash
-# 启动评审服务（自动打开浏览器）
-node skills/cc-redline/scripts/server.mjs path/to/doc.md --state-dir /tmp/cc-redline-1
+> 在浏览器里 review `docs/design.md`
+>
+> 帮我 review 这份 spec
 
-# 在驱动 agent 的循环里，阻塞直到下一个 submission/done 事件：
-node skills/cc-redline/scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
-```
+接下来交给 skill：它会启动一个本地评审服务，并在浏览器里打开渲染好的文档。你来
+批注 —— 点击块或章节、选中文本、或在 Raw 模式下双击某一行 —— 写下意见，点 **提交
+批注**。回到聊天里，agent 会把你的批注应用到文件；页面实时刷新，并把改动过的地方
+闪光高亮。想改几轮就改几轮，然后点 **结束 Review**（或直接告诉 agent）即可收尾。
 
-`server.mjs` 参数：`--port N`（默认：127.0.0.1 上的随机空闲端口）、
-`--no-open`（不自动打开浏览器）。
+全程你只待在浏览器和聊天里 —— 服务和「应用批注」这套循环都由 agent 替你驱动。
 
 ## 工作原理
 
@@ -50,6 +50,17 @@ SSE 推送刷新）与 `wait_for_review.mjs`（agent 每轮重跑一次的阻塞
 用**退出码**汇报发生了什么：0 = 有事件，2 = 超时，3 = 服务已死）。批注**按文
 本锚定、而非行号**：每条都带一段逐字节精确的 `quotedSource`，agent 据此定位并
 编辑。完整的 agent 契约见 [`SKILL.md`](skills/cc-redline/SKILL.md)。
+
+这两个脚本由 agent 替你启动和重跑。如果你想自己驱动这套循环 —— 脱离 Claude Code，
+或只是想看看底层机制 —— 也可以手动运行：
+
+```bash
+# 渲染并托管一个文档（会打开浏览器；可加 --port N 或 --no-open 调整）
+node skills/cc-redline/scripts/server.mjs path/to/doc.md --state-dir /tmp/cc-redline-1
+
+# 阻塞直到下一个 submission / done 事件（退出码即通信通道）
+node skills/cc-redline/scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
+```
 
 ## 开发
 
