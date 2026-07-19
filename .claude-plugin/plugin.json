@@ -1,6 +1,6 @@
 {
   "name": "cc-redline",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Interactive in-browser Markdown review loop — annotate blocks, sections, selections, or exact source lines; the driving agent applies your edits and the page live-refreshes. Bilingual (EN/中文), zero-dependency.",
   "author": {
     "name": "peilinok",
