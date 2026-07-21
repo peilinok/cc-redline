@@ -4,12 +4,13 @@
 
 **English** · [中文](README.zh-CN.md)
 
-An interactive, in-browser **Markdown review loop** packaged as a
-[Claude Code](https://claude.com/claude-code) skill. Start a local,
-zero-dependency web server that renders a Markdown file with Raw and Render
-modes; annotate blocks, sections, selected text, or an exact source line;
-submit — and the driving agent applies your annotations back to the file and
-the page auto-refreshes. Repeat until you click **End review**.
+An interactive, in-browser **Markdown review loop**, delivered as a
+[Claude Code](https://claude.com/claude-code) skill. Ask the agent to review a
+Markdown file and it renders the doc in your browser (Raw and Render modes); you
+annotate blocks, sections, selected text, or an exact source line and submit;
+the agent applies your annotations back to the file and the page live-refreshes.
+Repeat until you click **End review** — no commands to run, it's all chat plus
+the browser.
 
 The UI is bilingual (English / 中文) and switchable at runtime.
 
@@ -32,21 +33,24 @@ As a Claude Code plugin (recommended):
 Or manually: copy or symlink the `skills/cc-redline` directory into your Claude
 Code skills directory (e.g. `~/.claude/skills/cc-redline`).
 
-Then ask the agent to review a Markdown file, for example: "review this spec in
-the browser".
+## Usage
 
-## Use it directly
+Once it's installed you don't run anything yourself — just ask the agent, in
+plain language, to review a Markdown file:
 
-```bash
-# start the review server (opens your browser automatically)
-node skills/cc-redline/scripts/server.mjs path/to/doc.md --state-dir /tmp/cc-redline-1
+> review `docs/design.md` in the browser
+>
+> 帮我 review 这份 spec
 
-# in the driving agent's loop, block until the next submission/done event:
-node skills/cc-redline/scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
-```
+The skill takes it from there: it starts a local review server and opens the
+rendered document in your browser. You annotate — click a block or section,
+select text, or double-click an exact line in Raw mode — type a comment, and hit
+**Submit**. Back in the chat the agent applies your annotations to the file; the
+page live-refreshes and flash-highlights what changed. Do as many rounds as you
+like, then click **End review** (or just tell the agent) to finish.
 
-`server.mjs` flags: `--port N` (default: an ephemeral free port on 127.0.0.1),
-`--no-open` (don't auto-open the browser).
+You stay in the browser and the chat the whole time — the agent runs the server
+and the apply-loop for you.
 
 ## How it works
 
@@ -58,6 +62,17 @@ what happened: 0 = event, 2 = timeout, 3 = server dead). Annotations are
 anchored **by text, not line numbers**: each carries a byte-exact
 `quotedSource` the agent locates and edits. See
 [`SKILL.md`](skills/cc-redline/SKILL.md) for the full agent-facing contract.
+
+The agent starts and re-runs these for you. To drive the loop yourself — without
+Claude Code, or just to see the mechanism — run them by hand:
+
+```bash
+# render + serve a doc (opens your browser; add --port N or --no-open to adjust)
+node skills/cc-redline/scripts/server.mjs path/to/doc.md --state-dir /tmp/cc-redline-1
+
+# block until the next submission / done event (exit code is the channel)
+node skills/cc-redline/scripts/wait_for_review.mjs --state-dir /tmp/cc-redline-1 --timeout-sec 540
+```
 
 ## Development
 
