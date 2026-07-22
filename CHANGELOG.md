@@ -3,6 +3,29 @@
 All notable changes are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-07-22
+
+### Added
+- **Review history panel**: a read-only history of applied batches grouped by
+  round, each annotation showing its scope, quoted excerpt, outcome badge
+  (`applied` / `skipped`), and the agent's reasoning note.
+- **Processing receipt protocol** (`outcome-<seq>.json`): after applying a
+  submitted batch, the agent writes an atomic outcome file recording per
+  annotation whether it was `applied` or `skipped` and why. Guarantees a receipt
+  even when all annotations are skipped.
+- New `GET /api/history` endpoint aggregating submissions and outcomes,
+  seq-sorted, with the document's current version for reconciliation.
+- New SSE `outcome` event: broadcasts when an outcome file is written,
+  unblocking the history panel and enabling live-refresh of per-batch results
+  without waiting on document changes.
+- Batches now released **per `seq`**: on load, page initialization, and SSE
+  events (`hello`, `outcome`, `doc-changed`), the history reconciles against
+  `/api/history` as the source of truth, eliminating the case where an all-skip
+  round would leave the page waiting forever.
+- **Review log** (optional, end-of-review): the agent now offers to append a
+  review log (`.txt` file, named with date and timestamp) next to the reviewed
+  document.
+
 ## [0.2.0] — 2026-07-18
 
 ### Added
