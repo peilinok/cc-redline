@@ -184,3 +184,52 @@ test('createApp rejects a missing file', () => {
   const { root } = setup();
   assert.throws(() => createApp({ file: path.join(root, 'nope.md'), stateDir: path.join(root, 's') }));
 });
+
+test('GET /api/history aggregates submissions + outcomes, seq-sorted, currentVersion', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    type: 'submission', seq: 1, submittedAt: 't1', docVersion: 1,
+    globalComment: null, annotations: [{ id: 'a1', scope: 'block', comment: 'c1' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'outcome-1.json'), JSON.stringify({
+    type: 'outcome', seq: 1, results: [{ id: 'a1', status: 'applied', note: 'done' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json'), JSON.stringify({
+    type: 'submission', seq: 2, submittedAt: 't2', docVersion: 1,
+    globalComment: 'be formal', annotations: [],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const body = await (await fetch(base + '/api/history')).json();
+  assert.equal(body.currentVersion, 1);
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].seq, 1);
+  assert.equal(body.rounds[0].outcome.results[0].status, 'applied');
+  assert.equal(body.rounds[0].annotations[0].id, 'a1');
+  assert.equal(body.rounds[1].seq, 2);
+  assert.equal(body.rounds[1].outcome, null);
+  assert.equal(body.rounds[1].globalComment, 'be formal');
+});
+
+test('GET /api/history tolerates corrupt outcome and corrupt submission files', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  // corrupt outcome → outcome degrades to null, round still listed
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    seq: 1, submittedAt: 't', docVersion: 1, annotations: [{ id: 'a1' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'outcome-1.json'), '{ this is not json');
+  // corrupt submission → round still listed as a placeholder, not dropped
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json.consumed'), '{ broken');
+  fs.writeFileSync(path.join(stateDir, 'outcome-2.json'), JSON.stringify({
+    seq: 2, results: [{ id: 'zz', status: 'skipped', note: 'n' }],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const res = await fetch(base + '/api/history');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].outcome, null);
+  assert.deepEqual(body.rounds[1].annotations, []); // placeholder, not dropped
+  assert.equal(body.rounds[1].outcome.results[0].status, 'skipped');
+});

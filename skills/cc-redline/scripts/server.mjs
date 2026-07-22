@@ -135,6 +135,33 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
       if (req.method === 'GET' && pathname === '/api/doc') {
         return json(res, 200, { file: docFile, content, version });
       }
+      if (req.method === 'GET' && pathname === '/api/history') {
+        let names = [];
+        try { names = fs.readdirSync(stateDir); } catch { /* dir not there yet */ }
+        const seqs = new Set();
+        for (const name of names) {
+          const m = /^submission-(\d+)\.json(\.consumed)?$/.exec(name) || /^outcome-(\d+)\.json$/.exec(name);
+          if (m) seqs.add(Number(m[1]));
+        }
+        const readJson = (f) => {
+          try { return JSON.parse(fs.readFileSync(path.join(stateDir, f), 'utf8')); } catch { return null; }
+        };
+        const rounds = [];
+        for (const seq of [...seqs].sort((a, b) => a - b)) {
+          // .json may be renamed to .consumed mid-read (wait script); try both.
+          const s = readJson(`submission-${seq}.json`) || readJson(`submission-${seq}.json.consumed`);
+          const o = readJson(`outcome-${seq}.json`);
+          rounds.push({
+            seq,
+            submittedAt: s?.submittedAt ?? null,
+            docVersion: s?.docVersion ?? null,
+            globalComment: s?.globalComment ?? null,
+            annotations: Array.isArray(s?.annotations) ? s.annotations : [],
+            outcome: o,
+          });
+        }
+        return json(res, 200, { currentVersion: version, rounds });
+      }
       if (req.method === 'GET' && pathname === '/api/events') {
         res.writeHead(200, {
           'content-type': 'text/event-stream',
