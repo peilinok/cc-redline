@@ -23,15 +23,47 @@ The UI is bilingual (English / 中文) and switchable at runtime.
 
 ## Install
 
-As a Claude Code plugin (recommended):
+Pick whichever fits your setup.
+
+### Claude Code plugin (recommended)
 
 ```
 /plugin marketplace add peilinok/cc-redline
 /plugin install cc-redline@cc-redline
 ```
 
-Or manually: copy or symlink the `skills/cc-redline` directory into your Claude
-Code skills directory (e.g. `~/.claude/skills/cc-redline`).
+Or the non-interactive equivalents from your shell:
+
+```bash
+claude plugin marketplace add peilinok/cc-redline
+claude plugin install cc-redline@cc-redline
+```
+
+### Any Agent Skills–compatible agent (Codex, Cursor, Windsurf, …)
+
+cc-redline follows the [Agent Skills](https://agentskills.io) spec, so the
+universal [`skills`](https://github.com/vercel-labs/skills) installer works too:
+
+```bash
+npx skills add peilinok/cc-redline
+```
+
+> Run from **inside** an agent session, the CLI installs non-interactively and
+> may only write the universal `.agents/skills/` directory (which Claude Code
+> doesn't read). Target Claude Code explicitly:
+> `npx skills add peilinok/cc-redline -a claude-code`
+
+### Manual (clone + symlink or copy)
+
+```bash
+git clone https://github.com/peilinok/cc-redline.git
+ln -s "$PWD/cc-redline/skills/cc-redline" ~/.claude/skills/cc-redline
+# …or copy instead of symlink:
+# cp -r cc-redline/skills/cc-redline ~/.claude/skills/
+```
+
+**Updating** — `/plugin marketplace update cc-redline`, re-run the `npx skills`
+command, or `git pull` in your clone, depending on how you installed.
 
 ## Usage
 
