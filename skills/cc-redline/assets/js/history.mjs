@@ -2,6 +2,8 @@
 // node:test — no DOM here) plus a DOM renderer (added in the next task).
 // Data source is GET /api/history; this module never mutates review state.
 
+import { t } from './i18n.mjs';
+
 // 'resolved'            — an outcome file exists for this round
 // 'processed-no-outcome'— no outcome, but the doc advanced past it (old-protocol
 //                         agent, or drift): treat as done-but-unrecorded
@@ -33,4 +35,100 @@ export function roundChangedDoc(round) {
   const anyApplied = Array.isArray(o.results) && o.results.some((r) => r.status === 'applied');
   const globalApplied = o.globalComment && o.globalComment.status === 'applied';
   return !!(anyApplied || globalApplied);
+}
+
+const STATUS_BADGE = { applied: '✓', skipped: '⊘', unknown: '—' };
+const SCOPE_KEY = { block: 'scope.block', section: 'scope.section', selection: 'scope.selection', line: 'scope.line' };
+
+// First 3 source lines of the quoted anchor, ellipsised — enough to tell which
+// part of the (possibly since-rewritten) document a past annotation pointed at.
+function excerpt3(text) {
+  const lines = String(text || '').split('\n');
+  const head = lines.slice(0, 3).join('\n');
+  return lines.length > 3 ? head + '\n…' : head;
+}
+
+// Renders read-only history rounds into `historyEl`. Cards never re-anchor to the
+// (edited) document — history is an archive, not a live overlay.
+export function initHistory({ historyEl }) {
+  const head = historyEl.querySelector('#history-head');
+  const list = historyEl.querySelector('#history-rounds');
+
+  function card({ status, scope, comment, quoted, note }) {
+    const el = document.createElement('div');
+    el.className = 'history-card status-' + status;
+    const top = document.createElement('div');
+    top.className = 'history-card-head';
+    const badge = document.createElement('span');
+    badge.className = 'history-badge';
+    badge.textContent = STATUS_BADGE[status] || '—';
+    badge.title = t('history.status.' + status);
+    top.append(badge);
+    if (scope) {
+      const sc = document.createElement('span');
+      sc.className = 'history-scope';
+      sc.textContent = SCOPE_KEY[scope] ? t(SCOPE_KEY[scope]) : scope;
+      top.append(sc);
+    }
+    const cm = document.createElement('span');
+    cm.className = 'history-card-comment';
+    cm.textContent = comment;
+    top.append(cm);
+    el.append(top);
+    if (quoted) {
+      const ex = document.createElement('div');
+      ex.className = 'history-excerpt';
+      ex.textContent = excerpt3(quoted);
+      el.append(ex);
+    }
+    if (note) {
+      const n = document.createElement('div');
+      n.className = 'history-card-note';
+      n.textContent = note;
+      el.append(n);
+    }
+    return el;
+  }
+
+  function render(data) {
+    const all = data && Array.isArray(data.rounds) ? data.rounds : [];
+    const currentVersion = data ? data.currentVersion : null;
+    const rounds = all.slice().reverse(); // newest first
+    const doneCount = all.filter((r) => roundState(r, currentVersion) !== 'in-flight').length;
+    historyEl.hidden = doneCount === 0;
+    head.textContent = t('history.title', { n: doneCount });
+    list.textContent = '';
+    rounds.forEach((round, i) => {
+      const st = roundState(round, currentVersion);
+      const details = document.createElement('details');
+      details.className = 'history-round state-' + st;
+      if (i === 0) details.open = true; // newest expanded
+      const summary = document.createElement('summary');
+      const title = document.createElement('span');
+      title.className = 'history-round-title';
+      title.textContent = t('history.round', { seq: round.seq });
+      summary.append(title);
+      if (st !== 'resolved') {
+        const tag = document.createElement('span');
+        tag.className = 'history-round-tag';
+        tag.textContent = st === 'processed-no-outcome' ? t('history.state.processed') : t('history.state.inflight');
+        summary.append(tag);
+      }
+      details.append(summary);
+      for (const a of round.annotations) {
+        const r = annotationResult(round, a.id);
+        details.append(card({ status: r.status, scope: a.scope, comment: a.comment || '', quoted: a.quotedSource, note: r.note }));
+      }
+      // A round may be global-only (zero annotations) or also carry a global comment.
+      if (round.globalComment) {
+        const gr = round.outcome && round.outcome.globalComment ? round.outcome.globalComment : null;
+        const status = gr && (gr.status === 'applied' || gr.status === 'skipped') ? gr.status : 'unknown';
+        details.append(card({ status, scope: null, comment: t('history.global') + ': ' + round.globalComment, quoted: null, note: gr ? gr.note : '' }));
+      }
+      list.append(details);
+    });
+  }
+
+  head.addEventListener('click', () => historyEl.classList.toggle('collapsed'));
+  return { render };
 }
