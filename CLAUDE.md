@@ -87,11 +87,12 @@ to the **reviewed doc's dir** (images); `/api/doc`; `/api/history` (aggregates e
 round's submission + outcome, read fresh every call, no cache); `/api/events` (SSE:
 `hello`, `doc-changed`, and `outcome` once `outcome-<seq>.json` lands); `POST
 /api/submit`, `POST /api/done`. The browser unlocks a batch only by reconciling
-against `/api/history` (on load, SSE `hello`, and `outcome`) — never off the SSE
-event alone — so a missed broadcast self-heals. `serveStatic` has **path-traversal
-guards** (`\0` block + `normalize` prefix check) covered by `server.test.mjs` —
-don't weaken them. Uses `fs.watchFile` (stat polling, 500ms), **not** `fs.watch`:
-editors/agents save via temp-file + rename, which `fs.watch` misreports on Windows.
+against `/api/history` (on load, SSE `hello`, `outcome`, and `doc-changed`) — never
+off the SSE event alone — so a missed broadcast self-heals. `serveStatic` has
+**path-traversal guards** (`\0` block + `normalize` prefix check) covered by
+`server.test.mjs` — don't weaken them. Uses `fs.watchFile` (stat polling, 500ms),
+**not** `fs.watch`: editors/agents save via temp-file + rename, which `fs.watch`
+misreports on Windows.
 
 ### Anchoring contract `assets/js/blocks.mjs` (read the header comment first)
 

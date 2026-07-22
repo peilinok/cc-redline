@@ -228,7 +228,8 @@ window.addEventListener('resize', () => {
 
 connectEvents({
   onDocChanged: () => {
-    // Only re-renders. Unlocking is handled by refreshHistory()'s reconciliation.
+    // Re-renders, and reconciles: a round whose doc advanced without a receipt
+    // is only discovered here, once currentVersion has moved past it.
     refreshHistory();
     if (ann.hasPending()) {
       // Never auto-rerender over unsubmitted draft annotations.
