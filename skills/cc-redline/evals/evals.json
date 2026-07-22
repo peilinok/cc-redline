@@ -15,12 +15,14 @@
     {
       "id": 2,
       "prompt": "（review 进行中，wait 脚本输出了一份 submission：一条标注的 quotedSource 是「本节描述模块的初始化流程。」，comment 是「这句太含糊，说明初始化的具体时机」）请处理这份提交。",
-      "expected_output": "Apply the annotation by locating the quotedSource text verbatim and rewriting it per the comment, report the change in 2-3 sentences, then immediately re-run the wait script.",
+      "expected_output": "Apply the annotation by locating the quotedSource text verbatim and rewriting it per the comment, atomically write outcome-<seq>.json recording what it applied or skipped before saving the file, report the change in 2-3 sentences, then immediately re-run the wait script.",
       "files": [],
       "expectations": [
         "Anchors the edit by searching quotedSource text, not by startLine/endLine.",
         "Skips and honestly reports any annotation whose anchor text cannot be found or whose intent is unclear, instead of guessing.",
-        "Does not try to notify the browser after saving (the file watcher handles refresh) and loops back to wait_for_review.mjs."
+        "Does not try to notify the browser after saving (the file watcher handles refresh) and loops back to wait_for_review.mjs.",
+        "Before saving the file, writes $STATE_DIR/outcome-<seq>.json atomically (tmp + rename), with an entry for each annotation it acted on, keyed by that annotation's id, using status applied or skipped.",
+        "Records anything it could not anchor as status skipped with a note explaining why, rather than silently omitting the fact from the outcome."
       ]
     },
     {
@@ -31,6 +33,29 @@
       "expectations": [
         "Does not start server.mjs or open a browser for a summarize-only request.",
         "Reads the file and summarizes it in chat."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "（review 进行中，wait 脚本输出了一份 submission：两条标注的 quotedSource 都已无法在当前文档中定位）请处理这份提交。",
+      "expected_output": "Recognize that neither annotation can be anchored, make no edits to the document, write an outcome-<seq>.json marking both as skipped with a reason, report honestly in chat, then re-run the wait script.",
+      "files": [],
+      "expectations": [
+        "Does not guess or fabricate edits when quotedSource cannot be located.",
+        "Writes outcome-<seq>.json (atomically) with every result status = skipped and a note explaining why, even though the document did not change.",
+        "Reports the skipped annotations honestly and loops back to wait_for_review.mjs."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "（用户在页面点了 End review，wait 脚本返回 done）请收尾。",
+      "expected_output": "Offer to write a review log next to the reviewed doc, aggregating each round's annotations and their applied/skipped outcomes from the STATE_DIR files, then summarize the whole review.",
+      "files": [],
+      "expectations": [
+        "Aggregates submission-<seq>.json(.consumed) and outcome-<seq>.json from STATE_DIR into a dated section appended to <doc>.review-log.md next to the reviewed document.",
+        "Mentions the review log's path in the closing summary.",
+        "Skips the log if the user declines or the target directory is not writable, without failing the ending.",
+        "Summarizes rounds / annotations / main changes in chat."
       ]
     }
   ]

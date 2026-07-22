@@ -91,13 +91,46 @@ array order; for each annotation:
    `sectionPath`/the surrounding context, treat it as a mismatch rather than force it.
 4. `globalComment`, when present, applies to the whole document; use judgment.
 
-After applying: save the file (the browser refreshes itself via the file watcher — do
-not try to notify it), reply with a 2-3 sentence summary of what changed and anything
-skipped, then loop back to the wait command.
+After processing every annotation in the submission, and **before saving the file**,
+write a processing outcome so the browser can release the batch and show each
+annotation's result. This also covers the all-skipped case, where the file does not
+change at all:
+
+- Write `$STATE_DIR/outcome-<seq>.json` **atomically** (write `outcome-<seq>.json.tmp`,
+  then rename it into place — never a partial file). Shape:
+
+      { "type": "outcome", "seq": <the submission's seq>,
+        "results": [ { "id": "<annotation id>", "status": "applied" | "skipped",
+                       "note": "<short free-text explanation>" }, ... ],
+        "globalComment": { "status": "applied" | "skipped", "note": "..." } }
+
+  - One entry per annotation you acted on, keyed by the annotation's `id`. You do
+    not have to list every annotation — anything you omit simply shows as having no
+    per-item note.
+  - Use `skipped` (with a `note` saying why) for anything you could not anchor or
+    that was unclear — the same honest-skip rule as above, now visible in the page
+    instead of only in chat. Partial work: use `applied` and say what you left out
+    in the `note`.
+  - Include `globalComment` only if the submission carried one.
+  - `status` values are language-neutral English keys.
+
+Then save the file (the browser refreshes itself via the file watcher — do not try to
+notify it), reply with a 2-3 sentence summary of what changed and anything skipped,
+then loop back to the wait command.
 
 ### 4. Ending
 
 - Page button "End review" → the wait script returns `done`; the server exits itself.
+- On End review, before summarizing, offer to write a **review log**: read the
+  `submission-<seq>.json(.consumed)` and `outcome-<seq>.json` files in `STATE_DIR`
+  and append one dated section to a log file next to the reviewed doc. The file name
+  is the doc's name with a trailing `.md` stripped, plus `.review-log.md` (e.g.
+  `spec.md` → `spec.review-log.md`, `README` → `README.review-log.md`,
+  `notes.txt` → `notes.txt.review-log.md`). Append a `## Review <YYYY-MM-DD HH:MM>`
+  section (the time avoids colliding with an earlier review the same day) listing,
+  per round, each annotation's comment and its outcome (applied / skipped + note),
+  and mention the log's path in your closing summary. If the user declines, skip it.
+  If the target directory is not writable, report and skip — do not fail the ending.
 - The user may also end from chat at any time: kill the background server task, then
   summarize the whole review.
 
@@ -137,12 +170,22 @@ headings, a table, a task list, a fenced code block, a mermaid block, `$...$` an
       hides/shows all highlights and the rail
 - [ ] Submit writes `submission-<seq>.json`; submitted annotations lock in place as
       "Submitted" (edit/delete hidden) instead of clearing, new draft annotations can still be
-      added, the waiting banner shows, and the submitted batch clears when the AI's edit lands
+      added, the waiting banner shows
+- [ ] When the agent writes `outcome-<seq>.json`, that batch is released into the
+      right-hand "Processed" history panel with per-annotation ✓ applied / ⊘ skipped
+      badges, scope label and quoted excerpt — including an all-skipped round (no file
+      change), which still releases and shows a "no changes" banner (never a permanent wait)
+- [ ] The history panel is hidden until a round settles, survives a page reload /
+      SSE reconnect (rebuilt from `/api/history`), and follows the language switch
+- [ ] A round whose document advanced but which never got an outcome is still released
+      and shown as "no outcome recorded" (old-protocol agents never strand the page)
+- [ ] On End review, a `<doc>.review-log.md` is offered/written next to the doc
 - [ ] After a refresh lands an edit, the changed blocks flash-highlight briefly
       (gold fade) in Render, and their source lines do the same in Raw
 - [ ] Saving the file refreshes the browser; with pending annotations a confirm
       banner appears instead of auto-refresh
-- [ ] Multiple submissions queue and are consumed in seq order
+- [ ] Multiple submissions queue; each batch is released independently by its own
+      seq, so an outcome for one round never clears another round's cards
 - [ ] mermaid / KaTeX / highlighted code / local SVG render; a broken mermaid block
       shows an inline error without breaking the page
 - [ ] "End review" writes `done.json` and the server exits ~2s later
