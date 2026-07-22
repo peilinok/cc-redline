@@ -17,15 +17,46 @@
 
 ## 安装
 
-作为 Claude Code plugin 安装（推荐）：
+按你的环境挑一种即可。
+
+### Claude Code plugin（推荐）
 
 ```
 /plugin marketplace add peilinok/cc-redline
 /plugin install cc-redline@cc-redline
 ```
 
-或手动安装：把 `skills/cc-redline` 目录复制或软链接到你的 Claude Code skills
-目录（例如 `~/.claude/skills/cc-redline`）。
+或在终端里用非交互的等价命令：
+
+```bash
+claude plugin marketplace add peilinok/cc-redline
+claude plugin install cc-redline@cc-redline
+```
+
+### 任意兼容 Agent Skills 的 agent（Codex、Cursor、Windsurf……）
+
+cc-redline 遵循 [Agent Skills](https://agentskills.io) 规范，因此也能用通用安装器
+[`skills`](https://github.com/vercel-labs/skills)：
+
+```bash
+npx skills add peilinok/cc-redline
+```
+
+> 如果在 **agent 会话内部**运行，CLI 会非交互安装，且可能只写入通用的
+> `.agents/skills/` 目录（Claude Code 不读这个目录）。可显式指定 Claude Code：
+> `npx skills add peilinok/cc-redline -a claude-code`
+
+### 手动（clone + 软链接或复制）
+
+```bash
+git clone https://github.com/peilinok/cc-redline.git
+ln -s "$PWD/cc-redline/skills/cc-redline" ~/.claude/skills/cc-redline
+# …或用复制代替软链接：
+# cp -r cc-redline/skills/cc-redline ~/.claude/skills/
+```
+
+**更新** —— 视安装方式而定：`/plugin marketplace update cc-redline`、重新运行
+`npx skills` 命令，或在 clone 目录里 `git pull`。
 
 ## 使用
 
