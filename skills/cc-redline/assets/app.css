@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; color: #1f2328; }
-#banner[hidden], #popover[hidden], #selection-btn[hidden] { display: none !important; }
+#banner[hidden], #popover[hidden], #selection-btn[hidden], #history[hidden] { display: none !important; }
 
 /* top bar */
 #topbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: #fff; }
@@ -206,3 +206,49 @@ body.ann-hidden .ruler-tick.ann { display: none; }
 }
 #content .block.changed { animation: ccr-changed-fade 3s ease-out; }
 #raw-view .raw-line.changed { animation: ccr-changed-fade 3s ease-out; }
+
+#history {
+  position: fixed;
+  right: 26px;
+  bottom: 16px;
+  width: 300px;
+  max-width: calc(100vw - 42px);
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(140, 149, 159, .25);
+  z-index: 35;
+  overflow: hidden;
+  font-size: 13px;
+}
+#history-head {
+  flex: 0 0 auto;
+  text-align: left;
+  padding: 6px 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: #f6f8fa;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+#history.collapsed #history-rounds { display: none; }
+#history.collapsed #history-head { border-bottom: none; }
+#history-rounds { overflow-y: auto; padding: 6px; }
+.history-round { margin-bottom: 6px; }
+.history-round > summary { cursor: pointer; padding: 4px 6px; color: var(--muted); }
+.history-round-tag { margin-left: 6px; color: var(--muted); font-size: 11px; }
+.history-card { padding: 4px 6px; color: var(--muted); }
+.history-card-head { display: flex; align-items: baseline; gap: 6px; }
+.history-badge { font-weight: 700; flex: none; }
+.history-scope { flex: none; font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+.history-card-comment { color: #1f2328; }
+.history-excerpt { margin-left: 20px; font-size: 12px; white-space: pre-wrap; opacity: .75; max-height: 4.5em; overflow: hidden; }
+.history-card-note { margin-left: 20px; font-size: 12px; opacity: .8; }
+.history-card.status-applied .history-badge { color: #1a7f37; }
+.history-card.status-skipped .history-badge { color: var(--danger); }
+.history-card.status-unknown .history-badge { color: var(--muted); }
+body.ann-hidden #history { display: none; }

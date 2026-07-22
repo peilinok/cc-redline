@@ -77,6 +77,50 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
     for (const res of sseClients) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   }
 
+  // Detect each round's outcome-<seq>.json without a standing poll loop: watch
+  // the specific known path (reuses fs.watchFile, same as the doc watcher),
+  // broadcast once, then stop watching. A missed broadcast self-heals via the
+  // client's /api/history reconciliation.
+  const announcedOutcomes = new Set();
+  const watchedOutcomeSeqs = new Set();
+  function watchOutcome(seq) {
+    if (announcedOutcomes.has(seq) || watchedOutcomeSeqs.has(seq)) return;
+    const file = path.join(stateDir, `outcome-${seq}.json`);
+    const announce = () => {
+      announcedOutcomes.add(seq);
+      if (watchedOutcomeSeqs.delete(seq)) fs.unwatchFile(file);
+      broadcast('outcome', { seq });
+    };
+    // Already on disk (stale STATE_DIR / outcome landed while we were down):
+    // fs.watchFile would never fire for a file that does not change again.
+    try {
+      JSON.parse(fs.readFileSync(file, 'utf8'));
+      announcedOutcomes.add(seq);
+      return; // nothing to broadcast to: no client can be waiting on a pre-existing file
+    } catch { /* not there yet → watch for it */ }
+    watchedOutcomeSeqs.add(seq);
+    // watchFile's first fire is an immediate ENOENT baseline (curr is a
+    // zeroed Stats, so curr.isFile() is false) — libuv stats the path right
+    // away, before the first interval, purely to seed comparison state. A
+    // live readFileSync there is not a safe filter: it re-checks the disk
+    // *now*, which can race ahead of the baseline stat and false-positive if
+    // the file lands in between (observed: immediate re-arm-on-restart watches
+    // can otherwise "detect" and broadcast before any SSE client has
+    // reconnected). Trusting curr.isFile() ignores that baseline deterministically
+    // and only acts on a real, later stat transition to a genuine file.
+    fs.watchFile(file, { interval: watchIntervalMs }, (curr) => {
+      if (announcedOutcomes.has(seq) || !curr.isFile()) return;
+      try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
+      announce();
+    });
+  }
+  // Re-arm watches for any submitted round still lacking an outcome — survives a
+  // restart with the same STATE_DIR.
+  for (const name of (fs.existsSync(stateDir) ? fs.readdirSync(stateDir) : [])) {
+    const m = /^submission-(\d+)\.json(\.consumed)?$/.exec(name);
+    if (m) watchOutcome(Number(m[1]));
+  }
+
   // fs.watchFile (stat polling) is deliberate: editors and agents often
   // save via temp-file + rename, which fs.watch tends to misreport on Windows.
   fs.watchFile(docFile, { interval: watchIntervalMs }, () => {
@@ -135,6 +179,44 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
       if (req.method === 'GET' && pathname === '/api/doc') {
         return json(res, 200, { file: docFile, content, version });
       }
+      if (req.method === 'GET' && pathname === '/api/history') {
+        let names = [];
+        try { names = fs.readdirSync(stateDir); } catch { /* dir not there yet */ }
+        const seqs = new Set();
+        // Track which seqs the wait script has already renamed to `.consumed`
+        // separately from `seqs`: a round is only "taken" once the agent's wait
+        // script has claimed it, not merely because a submission file exists.
+        const consumedSeqs = new Set();
+        for (const name of names) {
+          const sub = /^submission-(\d+)\.json(\.consumed)?$/.exec(name);
+          if (sub) {
+            seqs.add(Number(sub[1]));
+            if (sub[2]) consumedSeqs.add(Number(sub[1]));
+            continue;
+          }
+          const outc = /^outcome-(\d+)\.json$/.exec(name);
+          if (outc) seqs.add(Number(outc[1]));
+        }
+        const readJson = (f) => {
+          try { return JSON.parse(fs.readFileSync(path.join(stateDir, f), 'utf8')); } catch { return null; }
+        };
+        const rounds = [];
+        for (const seq of [...seqs].sort((a, b) => a - b)) {
+          // .json may be renamed to .consumed mid-read (wait script); try both.
+          const s = readJson(`submission-${seq}.json`) || readJson(`submission-${seq}.json.consumed`);
+          const o = readJson(`outcome-${seq}.json`);
+          rounds.push({
+            seq,
+            submittedAt: s?.submittedAt ?? null,
+            docVersion: s?.docVersion ?? null,
+            globalComment: s?.globalComment ?? null,
+            annotations: Array.isArray(s?.annotations) ? s.annotations : [],
+            outcome: o,
+            consumed: consumedSeqs.has(seq),
+          });
+        }
+        return json(res, 200, { currentVersion: version, rounds });
+      }
       if (req.method === 'GET' && pathname === '/api/events') {
         res.writeHead(200, {
           'content-type': 'text/event-stream',
@@ -172,6 +254,7 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
         const target = path.join(stateDir, `submission-${submitSeq}.json`);
         fs.writeFileSync(target + '.tmp', JSON.stringify(record, null, 2));
         fs.renameSync(target + '.tmp', target); // atomic: the wait script never sees partial JSON
+        watchOutcome(submitSeq);
         return json(res, 200, { ok: true, seq: submitSeq });
       }
       if (req.method === 'POST' && pathname === '/api/done') {
@@ -203,6 +286,8 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
   server.on('close', () => {
     clearInterval(heartbeat);
     fs.unwatchFile(docFile);
+    for (const seq of watchedOutcomeSeqs) fs.unwatchFile(path.join(stateDir, `outcome-${seq}.json`));
+    watchedOutcomeSeqs.clear();
   });
 
   return { server, docFile, stateDir, getState: () => ({ version, submitSeq }) };

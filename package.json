@@ -1,6 +1,6 @@
 {
   "name": "cc-redline",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Claude Code skill for interactive, in-browser Markdown review — annotate blocks, sections, selections, or exact source lines and let the agent apply your edits in a loop.",
   "type": "module",
   "license": "MIT",

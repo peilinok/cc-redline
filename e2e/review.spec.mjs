@@ -150,18 +150,23 @@ test.describe('submit → agent protocol', () => {
     await expect(page.locator('#btn-submit')).toBeDisabled();
   });
 
-  test('applying the edit (file change) consumes the submitted batch and refreshes', async ({ page, review }) => {
+  test('an outcome + edit consumes the submitted batch, refreshes, and archives to history', async ({ page, review }) => {
     await page.goto(review.url);
     await addBlockAnnotation(page, 'Tail paragraph', 'expand this');
     await page.locator('#btn-submit').click();
-    await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const sub = await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const annId = sub.annotations[0].id;
 
-    // the "agent" applies the edit
+    // the "agent" writes the outcome atomically, then applies the edit
+    const outcome = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: annId, status: 'applied', note: 'expanded' }] });
+    fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), outcome);
+    fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, expanded by the agent.'));
 
     await expect(page.locator('#content')).toContainText('expanded by the agent', { timeout: 10_000 });
-    await expect(page.locator('.rail-card')).toHaveCount(0); // submitted batch consumed
-    // the edited block is flash-highlighted so the change is findable; others are not
+    await expect(page.locator('.rail-card')).toHaveCount(0); // active batch released
+    await expect(page.locator('#history')).toBeVisible();
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('expand this');
     await expect(page.locator('#content .block.changed')).toHaveCount(1);
     await expect(page.locator('#content .block.changed')).toContainText('expanded by the agent');
   });
@@ -213,5 +218,89 @@ test.describe('i18n', () => {
 
     await page.reload();
     await expect(page.locator('#btn-done')).toHaveText('结束 Review'); // remembered via localStorage
+  });
+});
+
+test.describe('review history', () => {
+  test('the history panel is hidden until a round settles', async ({ page, review }) => {
+    await page.goto(review.url);
+    await expect(page.locator('#history')).toBeHidden();
+    await addBlockAnnotation(page, 'First paragraph with', 'still in flight');
+    await page.locator('#btn-submit').click();
+    await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    await expect(page.locator('#history')).toBeHidden(); // in-flight rounds do not count
+  });
+
+  test('an all-skip round unlocks via outcome (no doc change) and shows a no-change banner', async ({ page, review }) => {
+    await page.goto(review.url);
+    await addBlockAnnotation(page, 'First paragraph with', 'please rephrase');
+    await page.locator('#btn-submit').click();
+    const sub = await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const annId = sub.annotations[0].id;
+
+    // agent skips it: writes an outcome, does NOT touch the doc
+    const outcome = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: annId, status: 'skipped', note: 'anchor ambiguous' }] });
+    fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), outcome);
+    fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
+
+    // unlocked without any doc-changed event
+    await expect(page.locator('.rail-card')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator('#banner')).toContainText('no changes to the document');
+    await expect(page.locator('#history .history-card.status-skipped')).toContainText('please rephrase');
+    await expect(page.locator('#history .history-card.status-skipped')).toContainText('anchor ambiguous');
+  });
+
+  test('multiple in-flight batches: the first outcome releases only its own seq', async ({ page, review }) => {
+    await page.goto(review.url);
+    await addBlockAnnotation(page, 'First paragraph with', 'note one');
+    await page.locator('#btn-submit').click();
+    const sub1 = await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    await addBlockAnnotation(page, 'Tail paragraph', 'note two');
+    await page.locator('#btn-submit').click();
+    await waitForFile(path.join(review.stateDir, 'submission-2.json'));
+    await expect(page.locator('.rail-card.submitted')).toHaveCount(2);
+
+    const id1 = sub1.annotations[0].id;
+    const o1 = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: id1, status: 'applied', note: 'ok' }] });
+    fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), o1);
+    fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
+
+    await expect(page.locator('.rail-card.submitted')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page.locator('.rail-card.submitted')).toContainText('note two');
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('note one');
+  });
+
+  test('a round whose doc advanced without an outcome is released and marked processed', async ({ page, review }) => {
+    await page.goto(review.url);
+    await addBlockAnnotation(page, 'Tail paragraph', 'old-protocol agent');
+    await page.locator('#btn-submit').click();
+    await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+
+    // "old" agent: consumes the submission first — the same fs.renameSync a real
+    // wait script performs (wait_for_review.mjs) — then edits the doc but never
+    // writes an outcome. The rename matters: roundState() only classifies a round
+    // processed-no-outcome once it has actually been consumed, not merely once
+    // docVersion has fallen behind currentVersion.
+    fs.renameSync(path.join(review.stateDir, 'submission-1.json'), path.join(review.stateDir, 'submission-1.json.consumed'));
+    fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, edited without an outcome.'));
+
+    await expect(page.locator('#content')).toContainText('edited without an outcome', { timeout: 10_000 });
+    await expect(page.locator('.rail-card')).toHaveCount(0); // no longer drawn: anchors went stale on the edit
+    await expect(page.locator('#history .history-round-tag')).toContainText('no outcome recorded'); // this is the one that actually proves reconciliation classified the round
+  });
+
+  test('history survives a page reload (rebuilt from /api/history)', async ({ page, review }) => {
+    await page.goto(review.url);
+    await addBlockAnnotation(page, 'First paragraph with', 'keep me');
+    await page.locator('#btn-submit').click();
+    const sub = await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const annId = sub.annotations[0].id;
+    const outcome = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: annId, status: 'applied', note: 'kept' }] });
+    fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), outcome);
+    fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('keep me', { timeout: 10_000 });
+
+    await page.reload();
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('keep me', { timeout: 10_000 });
   });
 });

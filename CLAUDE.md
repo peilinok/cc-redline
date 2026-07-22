@@ -65,13 +65,16 @@ The server and the agent **never talk directly**; they coordinate through files 
 - `wait_for_review.mjs`: a foreground **blocking** script, re-run each round, that
   reports what happened through its **exit code**.
 - `STATE_DIR` files: `server-info.json` (written as soon as the server listens,
-  `{url,port,pid,...}`), `submission-<seq>.json` (a browser submission), `done.json`.
+  `{url,port,pid,...}`), `submission-<seq>.json` (a browser submission),
+  `outcome-<seq>.json` (the agent's atomic processing receipt for that submission),
+  `done.json`.
 
 One round: browser POST → server atomically writes `submission-N.json` → the wait
 script finds it, **renames it to `.consumed`**, prints it, `exit 0` → the agent
-applies the annotations and saves → `fs.watchFile` detects the change and pushes an
-SSE refresh → the agent runs the wait script again. Exit codes: `0` = event,
-`2` = timeout (re-run silently), `3` = server dead (`process.kill(pid,0)` probe).
+applies the annotations, atomically writes `outcome-N.json` (the receipt), then
+saves the document → `fs.watchFile` detects the change and pushes an SSE refresh →
+the agent runs the wait script again. Exit codes: `0` = event, `2` = timeout
+(re-run silently), `3` = server dead (`process.kill(pid,0)` probe).
 
 All state files use **write-`.tmp`-then-`rename`** atomic writes so the wait script
 never reads half a JSON. Preserve this invariant.
@@ -81,11 +84,16 @@ never reads half a JSON. Preserve this invariant.
 Zero-dependency `http` server, binds `127.0.0.1`, default port `0` (ephemeral).
 `createApp()` is split from the CLI entry (`isMain`) so tests call `createApp`
 directly. Routes: `GET /` → app.html; `/assets/*`; `/doc-assets/*` → files relative
-to the **reviewed doc's dir** (images); `/api/doc`; `/api/events` (SSE);
-`POST /api/submit`, `POST /api/done`. `serveStatic` has **path-traversal guards**
-(`\0` block + `normalize` prefix check) covered by `server.test.mjs` — don't weaken
-them. Uses `fs.watchFile` (stat polling, 500ms), **not** `fs.watch`: editors/agents
-save via temp-file + rename, which `fs.watch` misreports on Windows.
+to the **reviewed doc's dir** (images); `/api/doc`; `/api/history` (aggregates each
+round's submission + outcome, read fresh every call, no cache); `/api/events` (SSE:
+`hello`, `doc-changed`, and `outcome` once `outcome-<seq>.json` lands); `POST
+/api/submit`, `POST /api/done`. The browser unlocks a batch only by reconciling
+against `/api/history` (on load, SSE `hello`, `outcome`, and `doc-changed`) — never
+off the SSE event alone — so a missed broadcast self-heals. `serveStatic` has
+**path-traversal guards** (`\0` block + `normalize` prefix check) covered by
+`server.test.mjs` — don't weaken them. Uses `fs.watchFile` (stat polling, 500ms),
+**not** `fs.watch`: editors/agents save via temp-file + rename, which `fs.watch`
+misreports on Windows.
 
 ### Anchoring contract `assets/js/blocks.mjs` (read the header comment first)
 
@@ -111,6 +119,10 @@ default `sectionPath` for content before the first heading.
   Cross-mode selection matching via `stripInline` + `locate`. **Strips client-only
   DOM-offset fields on submit** (the agent anchors by `quotedSource`/`selectedText`).
 - `blocks.mjs`: pure, **shared by the browser and `node:test`** — no DOM/browser APIs.
+- `history.mjs`: read-only "Processed" history panel, rendered from `/api/history`.
+  Round/result derivation (`roundState`, `annotationResult`, `roundChangedDoc`) is
+  pure and **shared by the browser and `node:test`**; cards never re-anchor to the
+  (edited) document — history is an archive, not a live overlay.
 - `i18n.mjs`: bilingual (en/zh) display-layer strings, runtime switch.
 - `toc.mjs` / `ruler.mjs` / `sse.mjs`: TOC + scroll-spy, overview ruler, EventSource.
 
@@ -132,8 +144,8 @@ structure requires updating `SKILL.md` (§3) and `evals/evals.json` in lockstep.
   CRLF) — guarded by `blocks.test.mjs` round-trip.
 - State files always atomic (`.tmp` + `rename`).
 - Don't weaken `serveStatic`'s path-traversal guards.
-- Submission protocol / exit codes / annotation fields: keep `SKILL.md`,
-  `evals/evals.json`, and the implementation in lockstep.
+- Submission protocol / exit codes / annotation fields / outcome protocol: keep
+  `SKILL.md`, `evals/evals.json`, and the implementation in lockstep.
 - Front-end changes: run the `SKILL.md` Manual acceptance checklist.
 - **i18n**: UI/runtime strings go through `i18n.mjs` `t()`; values written into the
   submission JSON stay language-neutral (`DOC_START`, English `scope` keys).

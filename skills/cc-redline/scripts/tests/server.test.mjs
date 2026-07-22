@@ -184,3 +184,159 @@ test('createApp rejects a missing file', () => {
   const { root } = setup();
   assert.throws(() => createApp({ file: path.join(root, 'nope.md'), stateDir: path.join(root, 's') }));
 });
+
+test('GET /api/history aggregates submissions + outcomes, seq-sorted, currentVersion', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    type: 'submission', seq: 1, submittedAt: 't1', docVersion: 1,
+    globalComment: null, annotations: [{ id: 'a1', scope: 'block', comment: 'c1' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'outcome-1.json'), JSON.stringify({
+    type: 'outcome', seq: 1, results: [{ id: 'a1', status: 'applied', note: 'done' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json'), JSON.stringify({
+    type: 'submission', seq: 2, submittedAt: 't2', docVersion: 1,
+    globalComment: 'be formal', annotations: [],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const body = await (await fetch(base + '/api/history')).json();
+  assert.equal(body.currentVersion, 1);
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].seq, 1);
+  assert.equal(body.rounds[0].outcome.results[0].status, 'applied');
+  assert.equal(body.rounds[0].annotations[0].id, 'a1');
+  assert.equal(body.rounds[1].seq, 2);
+  assert.equal(body.rounds[1].outcome, null);
+  assert.equal(body.rounds[1].globalComment, 'be formal');
+});
+
+test('GET /api/history marks consumed true for a .consumed submission, false for a pending one', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    type: 'submission', seq: 1, submittedAt: 't1', docVersion: 1, annotations: [],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json'), JSON.stringify({
+    type: 'submission', seq: 2, submittedAt: 't2', docVersion: 1, annotations: [],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const body = await (await fetch(base + '/api/history')).json();
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].seq, 1);
+  assert.equal(body.rounds[0].consumed, true);
+  assert.equal(body.rounds[1].seq, 2);
+  assert.equal(body.rounds[1].consumed, false);
+});
+
+test('GET /api/history tolerates corrupt outcome and corrupt submission files', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  // corrupt outcome → outcome degrades to null, round still listed
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    seq: 1, submittedAt: 't', docVersion: 1, annotations: [{ id: 'a1' }],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'outcome-1.json'), '{ this is not json');
+  // corrupt submission → round still listed as a placeholder, not dropped
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json.consumed'), '{ broken');
+  fs.writeFileSync(path.join(stateDir, 'outcome-2.json'), JSON.stringify({
+    seq: 2, results: [{ id: 'zz', status: 'skipped', note: 'n' }],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const res = await fetch(base + '/api/history');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].outcome, null);
+  assert.deepEqual(body.rounds[1].annotations, []); // placeholder, not dropped
+  assert.equal(body.rounds[1].outcome.results[0].status, 'skipped');
+});
+
+test('writing outcome-<seq>.json broadcasts an SSE outcome frame exactly once', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  const { base } = await listen(t, { file: md, stateDir, watchIntervalMs: 100 });
+
+  const frames = [];
+  let buf = '';
+  const req = http.get(base + '/api/events', (res) => {
+    res.setEncoding('utf8');
+    res.on('error', () => {});
+    res.on('data', (chunk) => {
+      buf += chunk;
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const ev = /^event: (.+)$/m.exec(raw); const data = /^data: (.+)$/m.exec(raw);
+        if (ev && data) frames.push({ event: ev[1], data: JSON.parse(data[1]) });
+      }
+    });
+  });
+  req.on('error', () => {});
+  try {
+    await fetch(base + '/api/submit', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ annotations: [{ id: 'a1', comment: 'x' }] }),
+    });
+    const file = path.join(stateDir, 'outcome-1.json');
+    fs.writeFileSync(file + '.tmp', JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: 'a1', status: 'applied' }] }));
+    fs.renameSync(file + '.tmp', file);
+
+    const deadline = Date.now() + 5000;
+    while (!frames.some((f) => f.event === 'outcome') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(frames.filter((f) => f.event === 'outcome').length, 1, 'exactly one outcome frame');
+    assert.equal(frames.find((f) => f.event === 'outcome').data.seq, 1);
+
+    // Force several further stat changes: a still-watching implementation would
+    // re-broadcast. This is what makes the de-dup assertion real.
+    for (let i = 1; i <= 4; i++) {
+      const ts = new Date(Date.now() + i * 1000);
+      fs.utimesSync(file, ts, ts);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    assert.equal(frames.filter((f) => f.event === 'outcome').length, 1, 'no re-broadcast after further mtime changes');
+  } finally {
+    req.destroy();
+  }
+});
+
+test('outcome watches are re-armed on restart for consumed rounds lacking an outcome', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  // a round submitted+consumed before this server started, with no outcome yet
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    seq: 1, submittedAt: 't', docVersion: 1, annotations: [{ id: 'a1' }],
+  }));
+  const { base } = await listen(t, { file: md, stateDir, watchIntervalMs: 100 });
+
+  const frames = [];
+  let buf = '';
+  const req = http.get(base + '/api/events', (res) => {
+    res.setEncoding('utf8');
+    res.on('error', () => {});
+    res.on('data', (chunk) => {
+      buf += chunk;
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const ev = /^event: (.+)$/m.exec(raw); const data = /^data: (.+)$/m.exec(raw);
+        if (ev && data) frames.push({ event: ev[1], data: JSON.parse(data[1]) });
+      }
+    });
+  });
+  req.on('error', () => {});
+  try {
+    const file = path.join(stateDir, 'outcome-1.json');
+    fs.writeFileSync(file + '.tmp', JSON.stringify({ type: 'outcome', seq: 1, results: [] }));
+    fs.renameSync(file + '.tmp', file);
+    const deadline = Date.now() + 5000;
+    while (!frames.some((f) => f.event === 'outcome') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.ok(frames.some((f) => f.event === 'outcome' && f.data.seq === 1), 're-armed watch broadcast');
+  } finally {
+    req.destroy();
+  }
+});
