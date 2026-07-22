@@ -211,6 +211,24 @@ test('GET /api/history aggregates submissions + outcomes, seq-sorted, currentVer
   assert.equal(body.rounds[1].globalComment, 'be formal');
 });
 
+test('GET /api/history marks consumed true for a .consumed submission, false for a pending one', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    type: 'submission', seq: 1, submittedAt: 't1', docVersion: 1, annotations: [],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json'), JSON.stringify({
+    type: 'submission', seq: 2, submittedAt: 't2', docVersion: 1, annotations: [],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const body = await (await fetch(base + '/api/history')).json();
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].seq, 1);
+  assert.equal(body.rounds[0].consumed, true);
+  assert.equal(body.rounds[1].seq, 2);
+  assert.equal(body.rounds[1].consumed, false);
+});
+
 test('GET /api/history tolerates corrupt outcome and corrupt submission files', async (t) => {
   const { md, stateDir } = setup();
   fs.mkdirSync(stateDir, { recursive: true });

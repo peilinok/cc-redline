@@ -276,7 +276,12 @@ test.describe('review history', () => {
     await page.locator('#btn-submit').click();
     await waitForFile(path.join(review.stateDir, 'submission-1.json'));
 
-    // "old" agent: edits the doc, never writes an outcome
+    // "old" agent: consumes the submission first — the same fs.renameSync a real
+    // wait script performs (wait_for_review.mjs) — then edits the doc but never
+    // writes an outcome. The rename matters: roundState() only classifies a round
+    // processed-no-outcome once it has actually been consumed, not merely once
+    // docVersion has fallen behind currentVersion.
+    fs.renameSync(path.join(review.stateDir, 'submission-1.json'), path.join(review.stateDir, 'submission-1.json.consumed'));
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, edited without an outcome.'));
 
     await expect(page.locator('#content')).toContainText('edited without an outcome', { timeout: 10_000 });

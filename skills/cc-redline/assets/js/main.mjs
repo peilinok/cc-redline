@@ -177,12 +177,16 @@ async function refreshHistory({ retry = true } = {}) {
     return null;
   }
   lastHistory = data;
-  hist.render(data);
   // /api/history is the source of truth for unlocking: any round that is no
   // longer in flight releases its batch, even if its SSE outcome was missed.
-  for (const r of data.rounds) {
-    if (roundState(r, data.currentVersion) !== 'in-flight') ann.consumeSubmitted(r.seq);
+  // This must run before hist.render(data): unlocking must not be able to fail
+  // just because rendering the history panel threw.
+  if (Array.isArray(data.rounds)) {
+    for (const r of data.rounds) {
+      if (roundState(r, data.currentVersion) !== 'in-flight') ann.consumeSubmitted(r.seq);
+    }
   }
+  hist.render(data);
   return data;
 }
 

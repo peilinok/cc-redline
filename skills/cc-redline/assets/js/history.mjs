@@ -5,12 +5,21 @@
 import { t } from './i18n.mjs';
 
 // 'resolved'            — an outcome file exists for this round
-// 'processed-no-outcome'— no outcome, but the doc advanced past it (old-protocol
-//                         agent, or drift): treat as done-but-unrecorded
-// 'in-flight'           — no outcome and the doc has not advanced: still pending
+// 'processed-no-outcome'— the agent consumed the round (submission renamed to
+//                         .consumed) and the doc advanced past it, but wrote no
+//                         outcome (old-protocol agent, or drift): treat as
+//                         done-but-unrecorded
+// 'in-flight'           — not yet consumed, or consumed but the doc has not
+//                         advanced past it: still pending
+//
+// `consumed` matters because `docVersion` is the *client's* document version at
+// submit time — it says nothing about whether the agent ever picked the round up.
+// Without it, a second round queued while the agent is still on the first would
+// satisfy `docVersion < currentVersion` the moment the first round's edit lands,
+// and get misreported as processed before the agent has even seen it.
 export function roundState(round, currentVersion) {
   if (round.outcome) return 'resolved';
-  if (round.docVersion != null && currentVersion != null && round.docVersion < currentVersion) {
+  if (round.consumed && round.docVersion != null && currentVersion != null && round.docVersion < currentVersion) {
     return 'processed-no-outcome';
   }
   return 'in-flight';

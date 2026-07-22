@@ -183,9 +183,19 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
         let names = [];
         try { names = fs.readdirSync(stateDir); } catch { /* dir not there yet */ }
         const seqs = new Set();
+        // Track which seqs the wait script has already renamed to `.consumed`
+        // separately from `seqs`: a round is only "taken" once the agent's wait
+        // script has claimed it, not merely because a submission file exists.
+        const consumedSeqs = new Set();
         for (const name of names) {
-          const m = /^submission-(\d+)\.json(\.consumed)?$/.exec(name) || /^outcome-(\d+)\.json$/.exec(name);
-          if (m) seqs.add(Number(m[1]));
+          const sub = /^submission-(\d+)\.json(\.consumed)?$/.exec(name);
+          if (sub) {
+            seqs.add(Number(sub[1]));
+            if (sub[2]) consumedSeqs.add(Number(sub[1]));
+            continue;
+          }
+          const outc = /^outcome-(\d+)\.json$/.exec(name);
+          if (outc) seqs.add(Number(outc[1]));
         }
         const readJson = (f) => {
           try { return JSON.parse(fs.readFileSync(path.join(stateDir, f), 'utf8')); } catch { return null; }
@@ -202,6 +212,7 @@ export function createApp({ file, stateDir, exit = (code) => process.exit(code),
             globalComment: s?.globalComment ?? null,
             annotations: Array.isArray(s?.annotations) ? s.annotations : [],
             outcome: o,
+            consumed: consumedSeqs.has(seq),
           });
         }
         return json(res, 200, { currentVersion: version, rounds });

@@ -5,8 +5,15 @@ import { roundState, annotationResult, roundChangedDoc } from '../../assets/js/h
 test('roundState: resolved when an outcome exists', () => {
   assert.equal(roundState({ outcome: { results: [] }, docVersion: 1 }, 3), 'resolved');
 });
-test('roundState: processed-no-outcome when doc advanced past the round', () => {
-  assert.equal(roundState({ outcome: null, docVersion: 1 }, 3), 'processed-no-outcome');
+test('roundState: processed-no-outcome when consumed and doc advanced past the round', () => {
+  assert.equal(roundState({ outcome: null, docVersion: 1, consumed: true }, 3), 'processed-no-outcome');
+});
+test('roundState: in-flight when not consumed, even though the doc advanced past the round', () => {
+  // Regression: docVersion is the client's version at submit time, not proof the
+  // agent ever picked the round up. A round queued while the agent is still
+  // working an earlier one must not be reported processed just because that
+  // earlier round's edit advanced the document.
+  assert.equal(roundState({ outcome: null, docVersion: 1, consumed: false }, 3), 'in-flight');
 });
 test('roundState: in-flight when no outcome and doc has not advanced', () => {
   assert.equal(roundState({ outcome: null, docVersion: 3 }, 3), 'in-flight');
