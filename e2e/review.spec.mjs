@@ -266,6 +266,7 @@ test.describe('review history', () => {
     fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
 
     await expect(page.locator('.rail-card.submitted')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page.locator('.rail-card.submitted')).toContainText('note two');
     await expect(page.locator('#history .history-card.status-applied')).toContainText('note one');
   });
 
@@ -279,8 +280,8 @@ test.describe('review history', () => {
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, edited without an outcome.'));
 
     await expect(page.locator('#content')).toContainText('edited without an outcome', { timeout: 10_000 });
-    await expect(page.locator('.rail-card')).toHaveCount(0); // released by reconciliation, never stuck
-    await expect(page.locator('#history .history-round-tag')).toContainText('no outcome recorded');
+    await expect(page.locator('.rail-card')).toHaveCount(0); // no longer drawn: anchors went stale on the edit
+    await expect(page.locator('#history .history-round-tag')).toContainText('no outcome recorded'); // this is the one that actually proves reconciliation classified the round
   });
 
   test('history survives a page reload (rebuilt from /api/history)', async ({ page, review }) => {
