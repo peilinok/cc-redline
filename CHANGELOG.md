@@ -18,13 +18,13 @@ All notable changes are documented here. This project adheres to
 - New SSE `outcome` event: broadcasts when an outcome file is written,
   unblocking the history panel and enabling live-refresh of per-batch results
   without waiting on document changes.
-- Batches now released **per `seq`**: on load, page initialization, and SSE
+- Batches now released **per `seq`**: on load and SSE
   events (`hello`, `outcome`, `doc-changed`), the history reconciles against
   `/api/history` as the source of truth, eliminating the case where an all-skip
   round would leave the page waiting forever.
 - **Review log** (optional, end-of-review): the agent now offers to append a
-  review log (`.txt` file, named with date and timestamp) next to the reviewed
-  document.
+  review log (`.md` file, `<doc>.review-log.md`; each review appends a dated
+  section) next to the reviewed document.
 
 ## [0.2.0] — 2026-07-18
 
