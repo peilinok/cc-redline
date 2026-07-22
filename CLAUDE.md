@@ -71,9 +71,10 @@ The server and the agent **never talk directly**; they coordinate through files 
 
 One round: browser POST → server atomically writes `submission-N.json` → the wait
 script finds it, **renames it to `.consumed`**, prints it, `exit 0` → the agent
-applies the annotations and saves → `fs.watchFile` detects the change and pushes an
-SSE refresh → the agent runs the wait script again. Exit codes: `0` = event,
-`2` = timeout (re-run silently), `3` = server dead (`process.kill(pid,0)` probe).
+applies the annotations, atomically writes `outcome-N.json` (the receipt), then
+saves the document → `fs.watchFile` detects the change and pushes an SSE refresh →
+the agent runs the wait script again. Exit codes: `0` = event, `2` = timeout
+(re-run silently), `3` = server dead (`process.kill(pid,0)` probe).
 
 All state files use **write-`.tmp`-then-`rename`** atomic writes so the wait script
 never reads half a JSON. Preserve this invariant.
@@ -143,8 +144,8 @@ structure requires updating `SKILL.md` (§3) and `evals/evals.json` in lockstep.
   CRLF) — guarded by `blocks.test.mjs` round-trip.
 - State files always atomic (`.tmp` + `rename`).
 - Don't weaken `serveStatic`'s path-traversal guards.
-- Submission protocol / exit codes / annotation fields: keep `SKILL.md`,
-  `evals/evals.json`, and the implementation in lockstep.
+- Submission protocol / exit codes / annotation fields / outcome protocol: keep
+  `SKILL.md`, `evals/evals.json`, and the implementation in lockstep.
 - Front-end changes: run the `SKILL.md` Manual acceptance checklist.
 - **i18n**: UI/runtime strings go through `i18n.mjs` `t()`; values written into the
   submission JSON stay language-neutral (`DOC_START`, English `scope` keys).

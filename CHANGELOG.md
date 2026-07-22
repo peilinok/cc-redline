@@ -11,8 +11,8 @@ All notable changes are documented here. This project adheres to
   (`applied` / `skipped`), and the agent's reasoning note.
 - **Processing receipt protocol** (`outcome-<seq>.json`): after applying a
   submitted batch, the agent writes an atomic outcome file recording per
-  annotation whether it was `applied` or `skipped` and why. Guarantees a receipt
-  even when all annotations are skipped.
+  annotation whether it was `applied` or `skipped` and why. The protocol calls
+  for a receipt even when all annotations are skipped.
 - New `GET /api/history` endpoint aggregating submissions and outcomes,
   seq-sorted, with the document's current version for reconciliation.
 - New SSE `outcome` event: broadcasts when an outcome file is written,
@@ -20,8 +20,8 @@ All notable changes are documented here. This project adheres to
   without waiting on document changes.
 - Batches now released **per `seq`**: on load and SSE
   events (`hello`, `outcome`, `doc-changed`), the history reconciles against
-  `/api/history` as the source of truth, eliminating the case where an all-skip
-  round would leave the page waiting forever.
+  `/api/history` as the source of truth, so a protocol-compliant agent's
+  all-skip round no longer leaves the page waiting forever.
 - **Review log** (optional, end-of-review): the agent now offers to append a
   review log (`.md` file, `<doc>.review-log.md`; each review appends a dated
   section) next to the reviewed document.

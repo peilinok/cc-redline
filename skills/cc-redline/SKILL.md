@@ -57,7 +57,7 @@ Interpret strictly by exit code:
 | exit | stdout | action |
 |------|--------|--------|
 | 0 | `{"type":"submission",...}` | Apply the annotations (section 3), report briefly, then run the wait command again immediately |
-| 0 | `{"type":"done",...}` | Review finished: summarize rounds / annotations / main changes. The server exits by itself |
+| 0 | `{"type":"done",...}` | Review finished: offer the review log (§4), summarize rounds / annotations / main changes. The server exits by itself |
 | 2 | (empty) | Timeout. Re-run silently. After 3 consecutive timeouts (~27 min idle), ask the user whether to end; if yes, kill the background server task |
 | 3 | `{"type":"server-dead","pid":<n>}` | Server died unexpectedly. Tell the user; offer to restart it with the same `STATE_DIR` (queued state survives) |
 

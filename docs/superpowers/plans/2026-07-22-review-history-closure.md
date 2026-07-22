@@ -336,10 +336,17 @@ Expected: FAIL（无 outcome 帧）
       return; // nothing to broadcast to: no client can be waiting on a pre-existing file
     } catch { /* not there yet → watch for it */ }
     watchedOutcomeSeqs.add(seq);
-    // watchFile fires on stat changes; the first fire may be the ENOENT baseline,
-    // whose readFileSync throws and is swallowed until the file really lands.
-    fs.watchFile(file, { interval: watchIntervalMs }, () => {
-      if (announcedOutcomes.has(seq)) return;
+    // watchFile's first fire is an immediate ENOENT baseline (curr is a
+    // zeroed Stats, so curr.isFile() is false) — libuv stats the path right
+    // away, before the first interval, purely to seed comparison state. A
+    // live readFileSync there is not a safe filter: it re-checks the disk
+    // *now*, which can race ahead of the baseline stat and false-positive if
+    // the file lands in between (observed: immediate re-arm-on-restart watches
+    // can otherwise "detect" and broadcast before any SSE client has
+    // reconnected). Trusting curr.isFile() ignores that baseline deterministically
+    // and only acts on a real, later stat transition to a genuine file.
+    fs.watchFile(file, { interval: watchIntervalMs }, (curr) => {
+      if (announcedOutcomes.has(seq) || !curr.isFile()) return;
       try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
       announce();
     });
@@ -351,6 +358,12 @@ Expected: FAIL（无 outcome 帧）
     if (m) watchOutcome(Number(m[1]));
   }
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(agent's first cut re-read the file on every stat fire, including the immediate
+ENOENT baseline fire — a real race, not just a hypothetical: a file landing in
+that window could be "detected" and broadcast to zero connected clients, with
+`announcedOutcomes` then blocking any retry. Shipped code above.)
 
 (b) 在 `/api/submit` 处理里挂载。**锚点必须用两行**——`fs.renameSync(target + '.tmp', target);` 单独一行在本文件出现 **2 次**（submit 与 done 分支逐字节相同），只有配上下一行才唯一。把：
 
@@ -1028,23 +1041,41 @@ import { initHistory, roundState, roundChangedDoc } from './history.mjs';
 const hist = initHistory({ historyEl: els.history });
 let lastHistory = null;
 
-async function refreshHistory() {
+let historyRetry = null;
+async function refreshHistory({ retry = true } = {}) {
   let data;
   try {
     data = await (await fetch('/api/history')).json();
   } catch {
-    return null; // transient; the next event or reconnect reconciles
+    // The outcome broadcast is one-shot and an all-skip round produces no
+    // doc-changed, so this can be the only reconciliation chance: retry once.
+    if (retry) {
+      clearTimeout(historyRetry);
+      historyRetry = setTimeout(() => refreshHistory({ retry: false }), 2000);
+    }
+    return null;
   }
   lastHistory = data;
-  hist.render(data);
   // /api/history is the source of truth for unlocking: any round that is no
   // longer in flight releases its batch, even if its SSE outcome was missed.
-  for (const r of data.rounds) {
-    if (roundState(r, data.currentVersion) !== 'in-flight') ann.consumeSubmitted(r.seq);
+  // This must run before hist.render(data): unlocking must not be able to fail
+  // just because rendering the history panel threw.
+  if (Array.isArray(data.rounds)) {
+    for (const r of data.rounds) {
+      if (roundState(r, data.currentVersion) !== 'in-flight') ann.consumeSubmitted(r.seq);
+    }
   }
+  hist.render(data);
   return data;
 }
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(shipped code differs from the plan in two ways the review caught: a silent
+catch here is wrong for an all-skip round — there is no later doc-changed to
+reconcile on, so it schedules one delayed retry instead; and the unlock loop
+now runs *before* `hist.render(data)`, guarded by `Array.isArray(data.rounds)`,
+so a rendering failure can never block a settled round from unlocking.)
 
 - [ ] **Step 4: 改 `connectEvents` 接线**
 
@@ -1239,13 +1270,19 @@ test.describe('review history', () => {
     const outcome = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: annId, status: 'applied', note: 'kept' }] });
     fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), outcome);
     fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
-    await expect(page.locator('#history .history-card.status-applied')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('keep me', { timeout: 10_000 });
 
     await page.reload();
     await expect(page.locator('#history .history-card.status-applied')).toContainText('keep me', { timeout: 10_000 });
   });
 });
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(the first assertion's `toBeVisible()` was unsatisfiable as written: `#history`
+ships collapsed by default — Task 4 Step 3's `<aside id="history" class="collapsed"
+hidden>` — so a card inside it never becomes visible merely because its round
+resolved. Shipped assertion checks `toContainText('keep me', ...)` instead.)
 
 - [ ] **Step 2: 跑 E2E**
 
