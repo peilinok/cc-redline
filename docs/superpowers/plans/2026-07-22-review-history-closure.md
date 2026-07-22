@@ -157,9 +157,19 @@ Expected: FAIL（路由不存在 → 404，`body.rounds` undefined）
         let names = [];
         try { names = fs.readdirSync(stateDir); } catch { /* dir not there yet */ }
         const seqs = new Set();
+        // Track which seqs the wait script has already renamed to `.consumed`
+        // separately from `seqs`: a round is only "taken" once the agent's wait
+        // script has claimed it, not merely because a submission file exists.
+        const consumedSeqs = new Set();
         for (const name of names) {
-          const m = /^submission-(\d+)\.json(\.consumed)?$/.exec(name) || /^outcome-(\d+)\.json$/.exec(name);
-          if (m) seqs.add(Number(m[1]));
+          const sub = /^submission-(\d+)\.json(\.consumed)?$/.exec(name);
+          if (sub) {
+            seqs.add(Number(sub[1]));
+            if (sub[2]) consumedSeqs.add(Number(sub[1]));
+            continue;
+          }
+          const outc = /^outcome-(\d+)\.json$/.exec(name);
+          if (outc) seqs.add(Number(outc[1]));
         }
         const readJson = (f) => {
           try { return JSON.parse(fs.readFileSync(path.join(stateDir, f), 'utf8')); } catch { return null; }
@@ -176,11 +186,21 @@ Expected: FAIL（路由不存在 → 404，`body.rounds` undefined）
             globalComment: s?.globalComment ?? null,
             annotations: Array.isArray(s?.annotations) ? s.annotations : [],
             outcome: o,
+            consumed: consumedSeqs.has(seq),
           });
         }
         return json(res, 200, { currentVersion: version, rounds });
       }
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(agent's first cut folded `submission-<seq>.json` and its `.consumed` sibling
+into one `seqs` set without recording which of the two names was actually
+seen, so the route had no way to answer "did the agent take this round" — the
+`consumed` field did not exist yet, which left the round-classification bug
+fixed in Task 3 Step 3 unfixable: the client would have nothing but
+`docVersion` to go on. Shipped code above tracks `consumedSeqs` separately
+and returns `consumed: consumedSeqs.has(seq)` per round.)
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -432,8 +452,15 @@ import { roundState, annotationResult, roundChangedDoc } from '../../assets/js/h
 test('roundState: resolved when an outcome exists', () => {
   assert.equal(roundState({ outcome: { results: [] }, docVersion: 1 }, 3), 'resolved');
 });
-test('roundState: processed-no-outcome when doc advanced past the round', () => {
-  assert.equal(roundState({ outcome: null, docVersion: 1 }, 3), 'processed-no-outcome');
+test('roundState: processed-no-outcome when consumed and doc advanced past the round', () => {
+  assert.equal(roundState({ outcome: null, docVersion: 1, consumed: true }, 3), 'processed-no-outcome');
+});
+test('roundState: in-flight when not consumed, even though the doc advanced past the round', () => {
+  // Regression: docVersion is the client's version at submit time, not proof the
+  // agent ever picked the round up. A round queued while the agent is still
+  // working an earlier one must not be reported processed just because that
+  // earlier round's edit advanced the document.
+  assert.equal(roundState({ outcome: null, docVersion: 1, consumed: false }, 3), 'in-flight');
 });
 test('roundState: in-flight when no outcome and doc has not advanced', () => {
   assert.equal(roundState({ outcome: null, docVersion: 3 }, 3), 'in-flight');
@@ -469,6 +496,14 @@ test('roundChangedDoc: null when no outcome', () => {
 });
 ```
 
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(the single `processed-no-outcome` case originally here predates the
+`consumed` flag — see Step 3 below's `roundState` note for why `docVersion`
+alone cannot carry this classification. Split into the two cases shipped
+`history.test.mjs` actually asserts: consumed classifies processed-no-outcome;
+unconsumed stays in-flight even though `docVersion` already trails
+`currentVersion`.)
+
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `node --test skills/cc-redline/scripts/tests/history.test.mjs`
@@ -484,12 +519,21 @@ Expected: FAIL（模块不存在）
 // Data source is GET /api/history; this module never mutates review state.
 
 // 'resolved'            — an outcome file exists for this round
-// 'processed-no-outcome'— no outcome, but the doc advanced past it (old-protocol
-//                         agent, or drift): treat as done-but-unrecorded
-// 'in-flight'           — no outcome and the doc has not advanced: still pending
+// 'processed-no-outcome'— the agent consumed the round (submission renamed to
+//                         .consumed) and the doc advanced past it, but wrote no
+//                         outcome (old-protocol agent, or drift): treat as
+//                         done-but-unrecorded
+// 'in-flight'           — not yet consumed, or consumed but the doc has not
+//                         advanced past it: still pending
+//
+// `consumed` matters because `docVersion` is the *client's* document version at
+// submit time — it says nothing about whether the agent ever picked the round up.
+// Without it, a second round queued while the agent is still on the first would
+// satisfy `docVersion < currentVersion` the moment the first round's edit lands,
+// and get misreported as processed before the agent has even seen it.
 export function roundState(round, currentVersion) {
   if (round.outcome) return 'resolved';
-  if (round.docVersion != null && currentVersion != null && round.docVersion < currentVersion) {
+  if (round.consumed && round.docVersion != null && currentVersion != null && round.docVersion < currentVersion) {
     return 'processed-no-outcome';
   }
   return 'in-flight';
@@ -517,10 +561,25 @@ export function roundChangedDoc(round) {
 }
 ```
 
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(agent's first cut classified `processed-no-outcome` from `docVersion <
+currentVersion` alone. That is wrong: `docVersion` cannot distinguish "the
+agent handled this round and left no receipt" from "the document moved on for
+an unrelated reason while this round sat in the queue" — e.g. a second round
+queued while the agent is still working an earlier one would get misreported
+as processed the instant the earlier round's edit lands, before the agent has
+even seen the second one. Shipped code above adds a `consumed` flag, true once
+the wait script has renamed `submission-<seq>.json` to `.consumed` — that
+rename is the protocol's own signal that the agent actually took the round —
+and requires `consumed && docVersion < currentVersion`. This is the same
+`consumed` field Task 1 Step 3 must also return from `/api/history`, and the
+same one `e2e/review.spec.mjs`'s no-outcome test (Task 7 Step 1) must set via
+`fs.renameSync` before it edits the doc.)
+
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `node --test skills/cc-redline/scripts/tests/history.test.mjs`
-Expected: PASS（全部 11 条）
+Expected: PASS（全部 12 条）
 
 - [ ] **Step 5: 提交**
 
@@ -1253,12 +1312,17 @@ test.describe('review history', () => {
     await page.locator('#btn-submit').click();
     await waitForFile(path.join(review.stateDir, 'submission-1.json'));
 
-    // "old" agent: edits the doc, never writes an outcome
+    // "old" agent: consumes the submission first — the same fs.renameSync a real
+    // wait script performs (wait_for_review.mjs) — then edits the doc but never
+    // writes an outcome. The rename matters: roundState() only classifies a round
+    // processed-no-outcome once it has actually been consumed, not merely once
+    // docVersion has fallen behind currentVersion.
+    fs.renameSync(path.join(review.stateDir, 'submission-1.json'), path.join(review.stateDir, 'submission-1.json.consumed'));
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, edited without an outcome.'));
 
     await expect(page.locator('#content')).toContainText('edited without an outcome', { timeout: 10_000 });
-    await expect(page.locator('.rail-card')).toHaveCount(0); // released by reconciliation, never stuck
-    await expect(page.locator('#history .history-round-tag')).toContainText('no outcome recorded');
+    await expect(page.locator('.rail-card')).toHaveCount(0); // no longer drawn: anchors went stale on the edit
+    await expect(page.locator('#history .history-round-tag')).toContainText('no outcome recorded'); // this is the one that actually proves reconciliation classified the round
   });
 
   test('history survives a page reload (rebuilt from /api/history)', async ({ page, review }) => {
@@ -1277,6 +1341,17 @@ test.describe('review history', () => {
   });
 });
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
+(the "doc advanced without an outcome" test originally went straight from
+submit to editing the doc — it never renamed the submission to `.consumed`.
+Against shipped `roundState` (Task 3 Step 3), an unconsumed round stays
+`in-flight` forever, no matter how far `docVersion` falls behind
+`currentVersion`, so this test would time out waiting for the `no outcome
+recorded` tag. Shipped test above performs the same `fs.renameSync` a real
+wait script does — `submission-1.json` → `submission-1.json.consumed` — before
+writing the doc, so the round is actually consumed before the doc advances
+past it.)
 
 <!-- corrected during implementation; see .superpowers/sdd/progress.md -->
 (the first assertion's `toBeVisible()` was unsatisfiable as written: `#history`
