@@ -40,6 +40,7 @@ export function initAnnotations({
   let nextId = 1;
   let globalComment = '';
   let globalSubmitted = false; // globalComment sent and awaiting the AI's edit
+  let globalSeq = null; // which submitted seq owns the current globalComment
   let pending = null; // { target, existing } | { global: true } while the popover is open
   let currentRange = null;
   let currentRangeMode = null; // 'render' | 'raw' — which view the pending selection came from
@@ -385,13 +386,16 @@ export function initAnnotations({
 
   function applyHighlights() {
     clearHighlights();
+    // In-flight batches whose document has since been replaced must not be
+    // re-anchored: their line/block anchors point at the pre-edit document.
+    const live = annotations.filter((a) => !a.staleAnchor);
     const srcLines = getDoc().content.split('\n');
     // Render view: block/section paint the whole block; any touch adds the count
     // badge; selections paint only their own text (below).
     for (const el of contentEl.querySelectorAll('.block')) {
       const bs = Number(el.dataset.startLine);
       const be = Number(el.dataset.endLine);
-      const touching = annotations.filter((a) =>
+      const touching = live.filter((a) =>
         a.scope === 'selection'
           ? (a.selBlockIds ? a.selBlockIds.includes(el.id) : (a.startLine <= be && a.endLine >= bs))
           : (a.startLine <= be && a.endLine >= bs));
@@ -400,7 +404,7 @@ export function initAnnotations({
       el.classList.toggle('annotated', touching.some((a) => a.scope === 'block' || a.scope === 'section'));
       el.dataset.count = String(touching.length);
     }
-    for (const a of annotations) {
+    for (const a of live) {
       if (a.scope !== 'selection') continue;
       if (a.origin !== 'raw' && a.selBlockIds) {
         // render selection: exact offset-based wrap
@@ -421,12 +425,12 @@ export function initAnnotations({
     if (rawViewEl) {
       for (const row of rawViewEl.querySelectorAll('.raw-line')) {
         const ln = Number(row.dataset.line);
-        if (annotations.some((a) => a.scope !== 'selection' && a.startLine <= ln && a.endLine >= ln)) {
+        if (live.some((a) => a.scope !== 'selection' && a.startLine <= ln && a.endLine >= ln)) {
           row.classList.add('annotated');
         }
       }
       const segsByLine = new Map();
-      for (const a of annotations) {
+      for (const a of live) {
         if (a.scope !== 'selection') continue;
         for (const seg of rawSelectionSegments(a, srcLines)) {
           if (!segsByLine.has(seg.ln)) segsByLine.set(seg.ln, []);
@@ -548,6 +552,7 @@ export function initAnnotations({
       const scrollTop = docPane.scrollTop;
       const items = [];
       for (const a of annotations) {
+        if (a.staleAnchor) continue;
         const anchor = anchorEl(a);
         if (!anchor) continue;
         const top = anchor.getBoundingClientRect().top - paneRect.top + scrollTop;
@@ -579,6 +584,7 @@ export function initAnnotations({
     const scrollTop = docPane.scrollTop;
     const out = [];
     for (const a of annotations) {
+      if (a.staleAnchor) continue;
       const anchor = anchorEl(a);
       if (!anchor) continue;
       const rect = anchor.getBoundingClientRect();
@@ -593,6 +599,7 @@ export function initAnnotations({
     const paneRect = docPane.getBoundingClientRect();
     const scrollTop = docPane.scrollTop;
     return annotations
+      .filter((a) => !a.staleAnchor)
       .map((a) => { const el = anchorEl(a); return el ? { a, y: el.getBoundingClientRect().top - paneRect.top + scrollTop } : null; })
       .filter(Boolean)
       .sort((x, y) => x.y - y.y)
@@ -689,9 +696,10 @@ export function initAnnotations({
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      const { seq } = await res.json();
       // Lock what we sent instead of clearing it — stays visible, awaiting the AI.
-      drafts.forEach((a) => { a.submitted = true; });
-      if (sendGlobal) globalSubmitted = true;
+      drafts.forEach((a) => { a.submitted = true; a.seq = seq; });
+      if (sendGlobal) { globalSubmitted = true; globalSeq = seq; }
       refreshUi();
       onSubmitted();
     } catch (err) {
@@ -719,12 +727,18 @@ export function initAnnotations({
       updateGlobalBtn();
       refreshUi();
     },
-    // The AI's edit landed: drop the submitted batch it consumed, keep any new drafts.
-    consumeSubmitted: () => {
-      annotations = annotations.filter((a) => !a.submitted);
-      if (globalSubmitted) { globalComment = ''; globalSubmitted = false; updateGlobalBtn(); }
-      refreshUi();
+    // A round's outcome landed (or /api/history says it is no longer in flight):
+    // release only that seq's batch, keeping drafts and other in-flight batches.
+    // Idempotent, so load / reconnect / doc-changed / outcome can all call it.
+    consumeSubmitted: (seq) => {
+      if (typeof seq !== 'number') return; // guard: never let a stray call wipe drafts
+      const before = annotations.length;
+      annotations = annotations.filter((a) => a.seq !== seq);
+      const hadGlobal = globalSubmitted && globalSeq === seq;
+      if (hadGlobal) { globalComment = ''; globalSubmitted = false; globalSeq = null; updateGlobalBtn(); }
+      if (before !== annotations.length || hadGlobal) refreshUi();
     },
+    hasSubmittedInFlight: () => annotations.some((a) => a.submitted),
     annotateLine: (line, at) => {
       const target = buildLineTarget(line);
       if (target) openPopover(target, at);
@@ -734,6 +748,9 @@ export function initAnnotations({
     getMarkers,
     navigate,
     onDocRerendered: () => {
+      // The document was replaced (an agent edit landed). Anchors of still-in-flight
+      // batches are stale; stop drawing them — their round's history entry takes over.
+      for (const a of annotations) if (a.submitted) a.staleAnchor = true;
       for (const el of contentEl.querySelectorAll('.block')) {
         const handles = document.createElement('div');
         handles.className = 'handles';
