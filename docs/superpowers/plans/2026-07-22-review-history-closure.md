@@ -62,10 +62,13 @@
     { "seq": 1, "submittedAt": "...", "docVersion": 2,
       "globalComment": "…或 null",
       "annotations": [ /* submission 的 annotations 原文 */ ],
-      "outcome": { /* outcome-1.json 内容，或 null */ } }
+      "outcome": { /* outcome-1.json 内容，或 null */ },
+      "consumed": true }
   ]
 }
 ```
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
 
 - `rounds` 按 `seq` 升序；逐文件容错（任一文件损坏按"缺失"降级，绝不 500）。
 - **损坏的 submission 不丢弃整轮**：降级为 `annotations: []` 的占位轮次，保证用户能看到"有这么一轮"。
@@ -80,7 +83,7 @@
 
 **Interfaces:**
 - Consumes: 既有 `createApp({file, stateDir, ...})`、闭包 `version`、`json(res, code, obj)`、`stateDir`。
-- Produces: `GET /api/history` → `{ currentVersion:number, rounds:[{seq,submittedAt,docVersion,globalComment,annotations,outcome}] }`。Task 3/4/6 依赖此形状。
+- Produces: `GET /api/history` → `{ currentVersion:number, rounds:[{seq,submittedAt,docVersion,globalComment,annotations,outcome,consumed}] }`。Task 3/4/6 依赖此形状。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -112,6 +115,26 @@ test('GET /api/history aggregates submissions + outcomes, seq-sorted, currentVer
   assert.equal(body.rounds[1].outcome, null);
   assert.equal(body.rounds[1].globalComment, 'be formal');
 });
+
+test('GET /api/history marks consumed true for a .consumed submission, false for a pending one', async (t) => {
+  const { md, stateDir } = setup();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'submission-1.json.consumed'), JSON.stringify({
+    type: 'submission', seq: 1, submittedAt: 't1', docVersion: 1, annotations: [],
+  }));
+  fs.writeFileSync(path.join(stateDir, 'submission-2.json'), JSON.stringify({
+    type: 'submission', seq: 2, submittedAt: 't2', docVersion: 1, annotations: [],
+  }));
+  const { base } = await listen(t, { file: md, stateDir });
+  const body = await (await fetch(base + '/api/history')).json();
+  assert.equal(body.rounds.length, 2);
+  assert.equal(body.rounds[0].seq, 1);
+  assert.equal(body.rounds[0].consumed, true);
+  assert.equal(body.rounds[1].seq, 2);
+  assert.equal(body.rounds[1].consumed, false);
+});
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
 
 test('GET /api/history tolerates corrupt outcome and corrupt submission files', async (t) => {
   const { md, stateDir } = setup();
@@ -205,7 +228,9 @@ and returns `consumed: consumedSeqs.has(seq)` per round.)
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `node --test --test-name-pattern="api/history" skills/cc-redline/scripts/tests/server.test.mjs`
-Expected: PASS（两条）
+Expected: PASS（三条）
+
+<!-- corrected during implementation; see .superpowers/sdd/progress.md -->
 
 - [ ] **Step 5: 全量回归 + 提交**
 
