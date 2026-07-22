@@ -150,19 +150,23 @@ test.describe('submit → agent protocol', () => {
     await expect(page.locator('#btn-submit')).toBeDisabled();
   });
 
-  test('applying the edit (file change) consumes the submitted batch and refreshes', async ({ page, review }) => {
+  test('an outcome + edit consumes the submitted batch, refreshes, and archives to history', async ({ page, review }) => {
     await page.goto(review.url);
     await addBlockAnnotation(page, 'Tail paragraph', 'expand this');
     await page.locator('#btn-submit').click();
-    await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const sub = await waitForFile(path.join(review.stateDir, 'submission-1.json'));
+    const annId = sub.annotations[0].id;
 
-    // the "agent" applies the edit
+    // the "agent" writes the outcome atomically, then applies the edit
+    const outcome = JSON.stringify({ type: 'outcome', seq: 1, results: [{ id: annId, status: 'applied', note: 'expanded' }] });
+    fs.writeFileSync(path.join(review.stateDir, 'outcome-1.json.tmp'), outcome);
+    fs.renameSync(path.join(review.stateDir, 'outcome-1.json.tmp'), path.join(review.stateDir, 'outcome-1.json'));
     fs.writeFileSync(review.mdPath, FIXTURE_MD.replace('Tail paragraph.', 'Tail paragraph, expanded by the agent.'));
 
     await expect(page.locator('#content')).toContainText('expanded by the agent', { timeout: 10_000 });
-    await expect(page.locator('.rail-card')).toHaveCount(0); // submitted batch consumed
-    // the edited block is flash-highlighted so the change is findable; others are not
-    await expect(page.locator('#content .block.changed')).toHaveCount(1);
+    await expect(page.locator('.rail-card')).toHaveCount(0); // active batch released
+    await expect(page.locator('#history')).toBeVisible();
+    await expect(page.locator('#history .history-card.status-applied')).toContainText('expand this');
     await expect(page.locator('#content .block.changed')).toContainText('expanded by the agent');
   });
 

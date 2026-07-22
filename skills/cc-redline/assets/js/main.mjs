@@ -5,6 +5,7 @@ import { connectEvents } from './sse.mjs';
 import { initAnnotations } from './annotate.mjs';
 import { initRuler } from './ruler.mjs';
 import { initLang, setLang, getLang, applyStaticI18n, t } from './i18n.mjs';
+import { initHistory, roundState, roundChangedDoc } from './history.mjs';
 
 const els = {
   docName: document.getElementById('doc-name'),
@@ -19,6 +20,7 @@ const els = {
   navCounter: document.getElementById('nav-counter'),
   navPrev: document.getElementById('nav-prev'),
   navNext: document.getElementById('nav-next'),
+  history: document.getElementById('history'),
 };
 
 initLang();
@@ -157,9 +159,30 @@ ruler = initRuler({
   getMode: () => state.mode,
 });
 
+const hist = initHistory({ historyEl: els.history });
+let lastHistory = null;
+
+async function refreshHistory() {
+  let data;
+  try {
+    data = await (await fetch('/api/history')).json();
+  } catch {
+    return null; // transient; the next event or reconnect reconciles
+  }
+  lastHistory = data;
+  hist.render(data);
+  // /api/history is the source of truth for unlocking: any round that is no
+  // longer in flight releases its batch, even if its SSE outcome was missed.
+  for (const r of data.rounds) {
+    if (roundState(r, data.currentVersion) !== 'in-flight') ann.consumeSubmitted(r.seq);
+  }
+  return data;
+}
+
 window.addEventListener('cc-redline:langchange', () => {
   applyStaticI18n(document); // topbar + popover + #content handles (data-i18n-label)
   ann.reflow();              // rebuild rail cards / scope labels in the new language
+  if (lastHistory) hist.render(lastHistory); // history panel is rendered via t(), not data-i18n
 });
 
 // Prev/next annotation navigation: topbar buttons + N (next) / P (prev) keys.
@@ -198,8 +221,8 @@ window.addEventListener('resize', () => {
 
 connectEvents({
   onDocChanged: () => {
-    // The AI applied the submitted batch — drop it (its cards were locked awaiting this).
-    ann.consumeSubmitted();
+    // Only re-renders. Unlocking is handled by refreshHistory()'s reconciliation.
+    refreshHistory();
     if (ann.hasPending()) {
       // Never auto-rerender over unsubmitted draft annotations.
       showBanner(t('banner.docChanged'), [
@@ -212,8 +235,19 @@ connectEvents({
     }
     refreshDoc();
   },
+  onOutcome: async ({ seq }) => {
+    const data = await refreshHistory(); // releases this round (and any other settled one)
+    const round = data && data.rounds.find((r) => r.seq === seq);
+    if (ann.hasSubmittedInFlight()) { showBanner(t('banner.inflight')); return; }
+    const changed = round ? roundChangedDoc(round) : null;
+    // Never gate the banner on a doc-changed that may never come (no-op edit,
+    // agent crash): settle it here, and let refreshDoc() clear it if one arrives.
+    showBanner(changed === false ? t('banner.roundNoChange') : t('banner.roundApplied'));
+  },
+  onHello: () => refreshHistory(), // (re)connect reconciliation: self-heals a missed outcome
   onStatus: (ok) => els.connDot.classList.toggle('ok', ok),
 });
 
 setMode('render');
 await loadDoc();
+await refreshHistory();
