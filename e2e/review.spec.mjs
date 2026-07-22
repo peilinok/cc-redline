@@ -167,6 +167,7 @@ test.describe('submit → agent protocol', () => {
     await expect(page.locator('.rail-card')).toHaveCount(0); // active batch released
     await expect(page.locator('#history')).toBeVisible();
     await expect(page.locator('#history .history-card.status-applied')).toContainText('expand this');
+    await expect(page.locator('#content .block.changed')).toHaveCount(1);
     await expect(page.locator('#content .block.changed')).toContainText('expanded by the agent');
   });
 

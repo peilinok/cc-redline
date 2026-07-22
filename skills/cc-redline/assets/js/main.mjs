@@ -162,12 +162,19 @@ ruler = initRuler({
 const hist = initHistory({ historyEl: els.history });
 let lastHistory = null;
 
-async function refreshHistory() {
+let historyRetry = null;
+async function refreshHistory({ retry = true } = {}) {
   let data;
   try {
     data = await (await fetch('/api/history')).json();
   } catch {
-    return null; // transient; the next event or reconnect reconciles
+    // The outcome broadcast is one-shot and an all-skip round produces no
+    // doc-changed, so this can be the only reconciliation chance: retry once.
+    if (retry) {
+      clearTimeout(historyRetry);
+      historyRetry = setTimeout(() => refreshHistory({ retry: false }), 2000);
+    }
+    return null;
   }
   lastHistory = data;
   hist.render(data);
